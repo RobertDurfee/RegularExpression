@@ -1,7 +1,8 @@
+use std::collections::BTreeSet as Set;
 use std::ops::Range;
 use std::u32;
 
-use finite_automata::{ENFA, Insert, Subsume, ContainsFrom, ContainsAllFrom};
+use finite_automata::{DFA, NFA, ENFA, Insert, Subsume, Contains, At, ContainsFrom, ContainsAllFrom};
 
 pub enum RE {
     Epsilon,
@@ -12,7 +13,7 @@ pub enum RE {
 }
 
 impl RE {
-    fn into_enfa(self, ids: &mut Range<u32>) -> ENFA<u32, char> {
+    fn into_enfa(&self, ids: &mut Range<u32>) -> ENFA<u32, char> {
         match self {
             RE::Epsilon => {
                 let mut eps = ENFA::new(ids.next().expect("no more ids"));
@@ -25,7 +26,7 @@ impl RE {
                 let mut sym = ENFA::new(ids.next().expect("no more ids"));
                 let sym_final_index = sym.insert(ids.next().expect("no more ids"));
                 sym.set_final(sym_final_index);
-                sym.insert((sym.initial_index(), Some(symbol), sym_final_index));
+                sym.insert((sym.initial_index(), Some(symbol.clone()), sym_final_index));
                 sym
             },
             RE::Alternation { res } => {
@@ -81,12 +82,77 @@ impl RE {
             },
         }
     }
+
+    pub fn is_match(&self, text: &str) -> bool {
+        let dfa: DFA<Set<u32>, char> = DFA::from(self.into_enfa(&mut (0..u32::MAX))); // TODO: compilation should be pulled out
+        let mut source_index = dfa.initial_index();
+        for character in text.chars() {
+            if let Some(transition_index) = dfa.contains(&(source_index, &character)) {
+                let (_, _, target_index) = dfa.at(transition_index);
+                source_index = target_index;
+            } else {
+                return false;
+            }
+        }
+        dfa.is_final(source_index)
+    }
 }
 
 impl From<RE> for ENFA<u32, char> {
     fn from(re: RE) -> ENFA<u32, char> {
         re.into_enfa(&mut (0..u32::MAX))
     }
+}
+
+impl From<RE> for NFA<Set<u32>, char> {
+    fn from(re: RE) -> NFA<Set<u32>, char> {
+        NFA::from(ENFA::from(re))
+    }
+}
+
+impl From<RE> for DFA<Set<u32>, char> {
+    fn from(re: RE) -> DFA<Set<u32>, char> {
+        DFA::from(ENFA::from(re))
+    }
+}
+
+#[macro_export]
+macro_rules! eps {
+    () => {{
+        crate::re::RE::Epsilon
+    }}
+}
+
+#[macro_export]
+macro_rules! sym {
+    ($x:expr) => {{
+        crate::re::RE::Symbol { symbol: $x }
+    }}
+}
+
+#[macro_export]
+macro_rules! alt {
+    ($($x:expr),*) => {{
+        let mut temp_vec = Vec::new();
+        $(temp_vec.push($x);)*
+        crate::re::RE::Alternation { res: temp_vec }
+    }}
+}
+
+#[macro_export]
+macro_rules! cat {
+    ($($x:expr),*) => {{
+        let mut temp_vec = Vec::new();
+        $(temp_vec.push($x);)*
+        crate::re::RE::Concatenation { res: temp_vec }
+    }}
+}
+
+#[macro_export]
+macro_rules! rep {
+    ($x:expr) => {{
+        crate::re::RE::Repetition { re: Box::new($x) }
+    }}
 }
 
 #[cfg(test)]
@@ -97,8 +163,6 @@ mod tests {
     use finite_automata::{At, Slice};
     use finite_automata::enfa::ENFA;
     use finite_automata::dfa::DFA;
-
-    use crate::RE;
 
     struct ExpectedENFA<S, T> {
         initial: S,
@@ -133,7 +197,8 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = ENFA::from(RE::Epsilon);
+        // r""
+        let actual = ENFA::from(eps!());
         assert_enfa_eq(expected, actual);
     }
 
@@ -146,7 +211,8 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = ENFA::from(RE::Symbol { symbol: 'A' });
+        // r"A"
+        let actual = ENFA::from(sym!('A'));
         assert_enfa_eq(expected, actual);
     }
 
@@ -164,12 +230,8 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = ENFA::from(RE::Alternation {
-            res: vec![
-                RE::Epsilon,
-                RE::Symbol { symbol: 'A' }
-            ]
-        });
+        // r"|A"
+        let actual = ENFA::from(alt![eps!(), sym!('A')]);
         assert_enfa_eq(expected, actual);
     }
 
@@ -186,12 +248,8 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = ENFA::from(RE::Concatenation {
-            res: vec![
-                RE::Symbol { symbol: 'A' },
-                RE::Epsilon
-            ]
-        });
+        // r"A"
+        let actual = ENFA::from(cat![sym!('A'), eps!()]);
         assert_enfa_eq(expected, actual);
     }
 
@@ -208,9 +266,8 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = ENFA::from(RE::Repetition {
-            re: Box::new(RE::Symbol { symbol: 'A' })
-        });
+        // r"A*"
+        let actual = ENFA::from(rep!(sym!('A')));
         assert_enfa_eq(expected, actual);
     }
 
@@ -221,7 +278,8 @@ mod tests {
             transitions: set![],
             finals: set![set![0, 1]]
         };
-        let actual = DFA::from(ENFA::from(RE::Epsilon));
+        // r""
+        let actual = DFA::from(eps!());
         assert_dfa_eq(expected, actual);
     }
 
@@ -234,7 +292,8 @@ mod tests {
             ],
             finals: set![set![1]]
         };
-        let actual = DFA::from(ENFA::from(RE::Symbol { symbol: 'A' }));
+        // r"A"
+        let actual = DFA::from(sym!('A'));
         assert_dfa_eq(expected, actual);
     }
 
@@ -247,12 +306,8 @@ mod tests {
             ],
             finals: set![set![0, 1, 2, 3, 4], set![1, 5]]
         };
-        let actual = DFA::from(ENFA::from(RE::Alternation {
-            res: vec![
-                RE::Epsilon,
-                RE::Symbol { symbol: 'A' }
-            ]
-        }));
+        // r"|A"
+        let actual = DFA::from(alt![eps!(), sym!('A')]);
         assert_dfa_eq(expected, actual);
     }
 
@@ -265,12 +320,8 @@ mod tests {
             ],
             finals: set![set![1, 3, 4, 5]]
         };
-        let actual = DFA::from(ENFA::from(RE::Concatenation {
-            res: vec![
-                RE::Symbol { symbol: 'A' },
-                RE::Epsilon
-            ]
-        }));
+        // r"A"
+        let actual = DFA::from(cat![sym!('A'), eps!()]);
         assert_dfa_eq(expected, actual);
     }
 
@@ -284,9 +335,120 @@ mod tests {
             ],
             finals: set![set![0, 1, 2], set![1, 2, 3]]
         };
-        let actual = DFA::from(ENFA::from(RE::Repetition {
-            re: Box::new(RE::Symbol { symbol: 'A' })
-        }));
+        // r"A*"
+        let actual = DFA::from(rep!(sym!('A')));
         assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_11() {
+        let expected = true;
+        // r""
+        let actual = eps!().is_match("");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_12() {
+        let expected = false;
+        // r""
+        let actual = eps!().is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_13() {
+        let expected = true;
+        // r"A"
+        let actual = sym!('A').is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_14() {
+        let expected = false;
+        // r"A"
+        let actual = sym!('A').is_match("B");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_15() {
+        let expected = true;
+        // r"A|B"
+        let actual = alt![sym!('A'), sym!('B')].is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_16() {
+        let expected = true;
+        // r"A|B"
+        let actual = alt![sym!('A'), sym!('B')].is_match("B");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_17() {
+        let expected = false;
+        // r"A|B"
+        let actual = alt![sym!('A'), sym!('B')].is_match("C");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_18() {
+        let expected = true;
+        // r"AB"
+        let actual = cat![sym!('A'), sym!('B')].is_match("AB");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_19() {
+        let expected = false;
+        // r"AB"
+        let actual = cat![sym!('A'), sym!('B')].is_match("AA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_20() {
+        let expected = true;
+        // r"A*"
+        let actual = rep!(sym!('A')).is_match("AAAAAAAAA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_21() {
+        let expected = false;
+        // r"A*"
+        let actual = rep!(sym!('A')).is_match("AAAABAAAA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_22() {
+        let expected = true;
+        // r"(0|1)*(000|111)(0|1)*"
+        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("01110");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_23() {
+        let expected = false;
+        // r"(0|1)*(000|111)(0|1)*"
+        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("0110");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_24() {
+        let expected = true;
+        // r"(0|1)*(000|111)(0|1)*"
+        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("011000");
+        assert_eq!(expected, actual);
     }
 }
