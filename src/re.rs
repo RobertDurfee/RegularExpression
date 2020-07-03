@@ -4,6 +4,7 @@ use std::u32;
 
 use finite_automata::{DFA, NFA, ENFA, Insert, Subsume, Contains, At, ContainsFrom, ContainsAllFrom};
 
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RE {
     Epsilon,
     Symbol { symbol: char },
