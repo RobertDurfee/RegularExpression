@@ -1,5 +1,4 @@
 use std::collections::BTreeSet as Set;
-use std::ops::Range;
 use std::u32;
 
 use finite_automata::{DFA, NFA, ENFA, Insert, Subsume, Contains, At, ContainsFrom, ContainsAllFrom};
@@ -14,7 +13,7 @@ pub enum RE {
 }
 
 impl RE {
-    fn into_enfa(&self, ids: &mut Range<u32>) -> ENFA<u32, char> {
+    pub fn into_enfa<T: Clone + Ord, I: Iterator<Item = T>>(&self, ids: &mut I) -> ENFA<T, char> {
         match self {
             RE::Epsilon => {
                 let mut eps = ENFA::new(ids.next().expect("no more ids"));
@@ -31,7 +30,7 @@ impl RE {
                 sym
             },
             RE::Alternation { res } => {
-                let mut alt: ENFA<u32, char> = ENFA::new(ids.next().expect("no more ids"));
+                let mut alt = ENFA::new(ids.next().expect("no more ids"));
                 let alt_final_index = alt.insert(ids.next().expect("no more ids"));
                 alt.set_final(alt_final_index);
                 for re in res {
