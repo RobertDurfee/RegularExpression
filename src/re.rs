@@ -119,14 +119,14 @@ impl From<RE> for DFA<Set<u32>, char> {
 #[macro_export]
 macro_rules! eps {
     () => {{
-        crate::re::RE::Epsilon
+        $crate::re::RE::Epsilon
     }}
 }
 
 #[macro_export]
 macro_rules! sym {
     ($x:expr) => {{
-        crate::re::RE::Symbol { symbol: $x }
+        $crate::re::RE::Symbol { symbol: $x }
     }}
 }
 
@@ -135,7 +135,7 @@ macro_rules! alt {
     ($($x:expr),*) => {{
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        crate::re::RE::Alternation { res: temp_vec }
+        $crate::re::RE::Alternation { res: temp_vec }
     }}
 }
 
@@ -144,14 +144,14 @@ macro_rules! cat {
     ($($x:expr),*) => {{
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        crate::re::RE::Concatenation { res: temp_vec }
+        $crate::re::RE::Concatenation { res: temp_vec }
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr) => {{
-        crate::re::RE::Repetition { re: Box::new($x) }
+        $crate::re::RE::Repetition { re: Box::new($x) }
     }}
 }
 
