@@ -1,7 +1,8 @@
 use std::collections::BTreeSet as Set;
-use std::u32;
 
 use finite_automata::{DFA, NFA, ENFA, Insert, Subsume, Contains, At, ContainsFrom, ContainsAllFrom};
+
+use crate::{StateGenerator, SimpleStateGenerator};
 
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RE {
@@ -13,28 +14,28 @@ pub enum RE {
 }
 
 impl RE {
-    pub fn into_enfa<T: Clone + Ord, I: Iterator<Item = T>>(&self, ids: &mut I) -> ENFA<T, char> {
+    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> ENFA<S, char> {
         match self {
             RE::Epsilon => {
-                let mut eps = ENFA::new(ids.next().expect("no more ids"));
-                let eps_final_index = eps.insert(ids.next().expect("no more ids"));
+                let mut eps = ENFA::new(states.next_initial());
+                let eps_final_index = eps.insert(states.next_final());
                 eps.set_final(eps_final_index);
                 eps.insert((eps.initial_index(), None, eps_final_index));
                 eps
             },
             RE::Symbol { symbol } => {
-                let mut sym = ENFA::new(ids.next().expect("no more ids"));
-                let sym_final_index = sym.insert(ids.next().expect("no more ids"));
+                let mut sym = ENFA::new(states.next_initial());
+                let sym_final_index = sym.insert(states.next_final());
                 sym.set_final(sym_final_index);
                 sym.insert((sym.initial_index(), Some(symbol.clone()), sym_final_index));
                 sym
             },
             RE::Alternation { res } => {
-                let mut alt = ENFA::new(ids.next().expect("no more ids"));
-                let alt_final_index = alt.insert(ids.next().expect("no more ids"));
+                let mut alt = ENFA::new(states.next_initial());
+                let alt_final_index = alt.insert(states.next_final());
                 alt.set_final(alt_final_index);
                 for re in res {
-                    let re = re.into_enfa(ids);
+                    let re = re.into_enfa(states.disable_final());
                     alt.subsume(&re);
                     let re_initial_index = alt.contains_from(&re, re.initial_index()).expect("state does not exist");
                     alt.insert((alt.initial_index(), None, re_initial_index));
@@ -46,12 +47,12 @@ impl RE {
                 alt
             },
             RE::Concatenation { res } => {
-                let mut cat = ENFA::new(ids.next().expect("no more ids"));
-                let cat_final_index = cat.insert(ids.next().expect("no more ids"));
+                let mut cat = ENFA::new(states.next_initial());
+                let cat_final_index = cat.insert(states.next_final());
                 cat.set_final(cat_final_index);
                 let mut prev_re_final_indices = set![cat.initial_index()];
                 for re in res {
-                    let re = re.into_enfa(ids);
+                    let re = re.into_enfa(states.disable_final());
                     cat.subsume(&re);
                     let re_initial_index = cat.contains_from(&re, re.initial_index()).expect("state does not exist");
                     for prev_re_final_index in prev_re_final_indices {
@@ -65,10 +66,10 @@ impl RE {
                 cat
             },
             RE::Repetition { re } => {
-                let mut rep = ENFA::new(ids.next().expect("no more ids"));
-                let rep_final_index = rep.insert(ids.next().expect("no more ids"));
+                let mut rep = ENFA::new(states.next_initial());
+                let rep_final_index = rep.insert(states.next_final());
                 rep.set_final(rep_final_index);
-                let re = re.into_enfa(ids);
+                let re = re.into_enfa(states.disable_final());
                 rep.subsume(&re);
                 let re_initial_index = rep.contains_from(&re, re.initial_index()).expect("state does not exist");
                 rep.insert((rep.initial_index(), None, re_initial_index));
@@ -84,7 +85,7 @@ impl RE {
     }
 
     pub fn is_match(&self, text: &str) -> bool {
-        let dfa: DFA<Set<u32>, char> = DFA::from(self.into_enfa(&mut (0..u32::MAX))); // TODO: compilation should be pulled out
+        let dfa: DFA<Set<u32>, char> = DFA::from(self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
         let mut source_index = dfa.initial_index();
         for character in text.chars() {
             if let Some(transition_index) = dfa.contains(&(source_index, &character)) {
@@ -100,7 +101,7 @@ impl RE {
 
 impl From<RE> for ENFA<u32, char> {
     fn from(re: RE) -> ENFA<u32, char> {
-        re.into_enfa(&mut (0..u32::MAX))
+        re.into_enfa(&mut SimpleStateGenerator::new())
     }
 }
 

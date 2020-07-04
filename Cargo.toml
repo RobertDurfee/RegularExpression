@@ -7,4 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-finite_automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }
+num = "0.3"
+finite_automata = { path = "../FiniteAutomata" }
