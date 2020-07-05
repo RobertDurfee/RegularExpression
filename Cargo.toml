@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 num = "0.3"
-finite_automata = { path = "../FiniteAutomata" }
+finite_automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }
