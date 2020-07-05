@@ -1,8 +1,20 @@
 use std::collections::BTreeSet as Set;
 
-use finite_automata::{DFA, NFA, ENFA, Insert, Subsume, Contains, At, ContainsFrom, ContainsAllFrom};
+use finite_automata::{
+    Etr,
+    Tr,
+    Subsume,
+    states_contains_from,
+    states_contains_all_from,
+    Enfa,
+    Nfa,
+    Dfa,
+};
 
-use crate::{StateGenerator, SimpleStateGenerator};
+use crate::{
+    StateGenerator,
+    SimpleStateGenerator
+};
 
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RE {
@@ -14,82 +26,82 @@ pub enum RE {
 }
 
 impl RE {
-    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> ENFA<S, char> {
+    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, char> {
         match self {
             RE::Epsilon => {
-                let mut eps = ENFA::new(states.next_initial());
-                let eps_final_index = eps.insert(states.next_final());
+                let mut eps = Enfa::new(states.next_initial());
+                let eps_final_index = eps.states_insert(states.next_final());
                 eps.set_final(eps_final_index);
-                eps.insert((eps.initial_index(), None, eps_final_index));
+                eps.transitions_insert((eps.initial_index(), Etr::None, eps_final_index));
                 eps
             },
             RE::Symbol { symbol } => {
-                let mut sym = ENFA::new(states.next_initial());
-                let sym_final_index = sym.insert(states.next_final());
+                let mut sym = Enfa::new(states.next_initial());
+                let sym_final_index = sym.states_insert(states.next_final());
                 sym.set_final(sym_final_index);
-                sym.insert((sym.initial_index(), Some(symbol.clone()), sym_final_index));
+                sym.transitions_insert((sym.initial_index(), Etr::Some(symbol.clone()), sym_final_index));
                 sym
             },
             RE::Alternation { res } => {
-                let mut alt = ENFA::new(states.next_initial());
-                let alt_final_index = alt.insert(states.next_final());
+                let mut alt = Enfa::new(states.next_initial());
+                let alt_final_index = alt.states_insert(states.next_final());
                 alt.set_final(alt_final_index);
                 for re in res {
                     let re = re.into_enfa(states.disable_final());
                     alt.subsume(&re);
-                    let re_initial_index = alt.contains_from(&re, re.initial_index()).expect("state does not exist");
-                    alt.insert((alt.initial_index(), None, re_initial_index));
+                    let re_initial_index = states_contains_from(&alt, &re, re.initial_index()).expect("state does not exist");
+                    alt.transitions_insert((alt.initial_index(), Etr::None, re_initial_index));
                     for re_final_index in re.final_indices() {
-                        let re_final_index = alt.contains_from(&re, re_final_index).expect("state does not exist");
-                        alt.insert((re_final_index, None, alt_final_index));
+                        let re_final_index = states_contains_from(&alt, &re, re_final_index).expect("state does not exist");
+                        alt.transitions_insert((re_final_index, Etr::None, alt_final_index));
                     }
                 }
                 alt
             },
             RE::Concatenation { res } => {
-                let mut cat = ENFA::new(states.next_initial());
-                let cat_final_index = cat.insert(states.next_final());
+                let mut cat = Enfa::new(states.next_initial());
+                let cat_final_index = cat.states_insert(states.next_final());
                 cat.set_final(cat_final_index);
                 let mut prev_re_final_indices = set![cat.initial_index()];
                 for re in res {
                     let re = re.into_enfa(states.disable_final());
                     cat.subsume(&re);
-                    let re_initial_index = cat.contains_from(&re, re.initial_index()).expect("state does not exist");
+                    let re_initial_index = states_contains_from(&cat, &re, re.initial_index()).expect("state does not exist");
                     for prev_re_final_index in prev_re_final_indices {
-                        cat.insert((prev_re_final_index, None, re_initial_index));
+                        cat.transitions_insert((prev_re_final_index, Etr::None, re_initial_index));
                     }
-                    prev_re_final_indices = cat.contains_all_from(&re, re.final_indices()).expect("not all states exist").collect();
+                    prev_re_final_indices = states_contains_all_from(&cat, &re, re.final_indices()).expect("not all states exist").collect();
                 }
                 for prev_re_final_index in prev_re_final_indices {
-                    cat.insert((prev_re_final_index, None, cat_final_index));
+                    cat.transitions_insert((prev_re_final_index, Etr::None, cat_final_index));
                 }
                 cat
             },
             RE::Repetition { re } => {
-                let mut rep = ENFA::new(states.next_initial());
-                let rep_final_index = rep.insert(states.next_final());
+                let mut rep = Enfa::new(states.next_initial());
+                let rep_final_index = rep.states_insert(states.next_final());
                 rep.set_final(rep_final_index);
                 let re = re.into_enfa(states.disable_final());
                 rep.subsume(&re);
-                let re_initial_index = rep.contains_from(&re, re.initial_index()).expect("state does not exist");
-                rep.insert((rep.initial_index(), None, re_initial_index));
+                let re_initial_index = states_contains_from(&rep, &re, re.initial_index()).expect("state does not exist");
+                rep.transitions_insert((rep.initial_index(), Etr::None, re_initial_index));
                 for re_final_index in re.final_indices() {
-                    let re_final_index = rep.contains_from(&re, re_final_index).expect("state does not exist");
-                    rep.insert((re_final_index, None, rep_final_index));
-                    rep.insert((re_final_index, None, re_initial_index));
+                    let re_final_index = states_contains_from(&rep, &re, re_final_index).expect("state does not exist");
+                    rep.transitions_insert((re_final_index, Etr::None, rep_final_index));
+                    rep.transitions_insert((re_final_index, Etr::None, re_initial_index));
                 }
-                rep.insert((rep.initial_index(), None, rep_final_index));
+                rep.transitions_insert((rep.initial_index(), Etr::None, rep_final_index));
                 rep
             },
         }
     }
 
     pub fn is_match(&self, text: &str) -> bool {
-        let dfa: DFA<Set<u32>, char> = DFA::from(self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
+        let dfa: Dfa<Set<u32>, char> = Dfa::from(&self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
         let mut source_index = dfa.initial_index();
         for character in text.chars() {
-            if let Some(transition_index) = dfa.contains(&(source_index, &character)) {
-                let (_, _, target_index) = dfa.at(transition_index);
+            if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &Tr::Some(character))) {
+                let (_, _, target_index) = dfa.transitions_index(transition_index);
                 source_index = target_index;
             } else {
                 return false;
@@ -99,21 +111,21 @@ impl RE {
     }
 }
 
-impl From<RE> for ENFA<u32, char> {
-    fn from(re: RE) -> ENFA<u32, char> {
+impl From<&RE> for Enfa<u32, char> {
+    fn from(re: &RE) -> Enfa<u32, char> {
         re.into_enfa(&mut SimpleStateGenerator::new())
     }
 }
 
-impl From<RE> for NFA<Set<u32>, char> {
-    fn from(re: RE) -> NFA<Set<u32>, char> {
-        NFA::from(ENFA::from(re))
+impl From<&RE> for Nfa<Set<u32>, char> {
+    fn from(re: &RE) -> Nfa<Set<u32>, char> {
+        Nfa::from(&Enfa::from(re))
     }
 }
 
-impl From<RE> for DFA<Set<u32>, char> {
-    fn from(re: RE) -> DFA<Set<u32>, char> {
-        DFA::from(ENFA::from(re))
+impl From<&RE> for Dfa<Set<u32>, char> {
+    fn from(re: &RE) -> Dfa<Set<u32>, char> {
+        Dfa::from(&Enfa::from(re))
     }
 }
 
@@ -158,186 +170,191 @@ macro_rules! rep {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet as Set;
-    use std::fmt::Debug;
+    use std::{
+        collections::BTreeSet as Set,
+        fmt::Debug,
+    };
 
-    use finite_automata::{At, Slice};
-    use finite_automata::enfa::ENFA;
-    use finite_automata::dfa::DFA;
+    use finite_automata::{
+        Etr,
+        Tr,
+        Enfa,
+        Dfa,
+    };
 
-    struct ExpectedENFA<S, T> {
+    struct ExpectedEnfa<S, T> {
         initial: S,
-        transitions: Set<(S, Option<T>, S)>,
+        transitions: Set<(S, Etr<T>, S)>,
         finals: Set<S>,
     }
 
-    fn assert_enfa_eq<S: Clone + Debug + Ord, T: Clone + Debug + Ord>(expected: ExpectedENFA<S, T>, actual: ENFA<S, T>) {
-        assert_eq!(expected.initial, actual.at(actual.initial_index()).clone());
-        assert_eq!(expected.transitions, actual.slice(actual.transition_indices()).map(|(source, transition, target)| (actual.at(source).clone(), transition.clone(), actual.at(target).clone())).collect());
-        assert_eq!(expected.finals, actual.final_indices().map(|final_index| actual.at(final_index).clone()).collect());
+    fn assert_enfa_eq<S: Clone + Debug + Ord, T: Clone + Debug + Ord>(expected: ExpectedEnfa<S, T>, actual: Enfa<S, T>) {
+        assert_eq!(expected.initial, actual.states_index(actual.initial_index()).clone());
+        assert_eq!(expected.transitions, actual.transitions_slice(actual.transition_indices()).map(|(source, transition, target)| (actual.states_index(source).clone(), transition.clone(), actual.states_index(target).clone())).collect());
+        assert_eq!(expected.finals, actual.states_slice(actual.final_indices()).cloned().collect());
     }
 
-    struct ExpectedDFA<S, T> {
+    struct ExpectedDfa<S, T> {
         initial: S,
-        transitions: Set<(S, T, S)>,
+        transitions: Set<(S, Tr<T>, S)>,
         finals: Set<S>,
     }
 
-    fn assert_dfa_eq<S: Clone + Debug + Ord, T: Clone + Debug + Ord>(expected: ExpectedDFA<Set<S>, T>, actual: DFA<Set<S>, T>) {
-        assert_eq!(expected.initial, actual.at(actual.initial_index()).clone());
-        assert_eq!(expected.transitions, actual.slice(actual.transition_indices()).map(|(source, transition, target)| (actual.at(source).clone(), transition.clone(), actual.at(target).clone())).collect());
-        assert_eq!(expected.finals, actual.final_indices().map(|final_index| actual.at(final_index).clone()).collect());
+    fn assert_dfa_eq<S: Clone + Debug + Ord, T: Clone + Debug + Ord>(expected: ExpectedDfa<Set<S>, T>, actual: Dfa<Set<S>, T>) {
+        assert_eq!(expected.initial, actual.states_index(actual.initial_index()).clone());
+        assert_eq!(expected.transitions, actual.transitions_slice(actual.transition_indices()).map(|(source, transition, target)| (actual.states_index(source).clone(), transition.clone(), actual.states_index(target).clone())).collect());
+        assert_eq!(expected.finals, actual.states_slice(actual.final_indices()).cloned().collect());
     }
 
     #[test]
     fn test_1() {
-         let expected = ExpectedENFA {
+         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, None,      1)
+                (0, Etr::None, 1)
             ],
             finals: set![1]
         };
         // r""
-        let actual = ENFA::from(eps!());
+        let actual = Enfa::from(&eps!());
         assert_enfa_eq(expected, actual);
     }
 
      #[test]
     fn test_2() {
-        let expected = ExpectedENFA {
+        let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Some('A'), 1)
+                (0, Etr::Some('A'), 1)
             ],
             finals: set![1]
         };
         // r"A"
-        let actual = ENFA::from(sym!('A'));
+        let actual = Enfa::from(&sym!('A'));
         assert_enfa_eq(expected, actual);
     }
 
     #[test]
     fn test_3() {
-        let expected = ExpectedENFA {
+        let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, None,      2),
-                (0, None,      4),
-                (2, None,      3),
-                (4, Some('A'), 5),
-                (3, None,      1),
-                (5, None,      1)
+                (0, Etr::None, 2),
+                (0, Etr::None, 4),
+                (2, Etr::None, 3),
+                (4, Etr::Some('A'), 5),
+                (3, Etr::None, 1),
+                (5, Etr::None, 1)
             ],
             finals: set![1]
         };
         // r"|A"
-        let actual = ENFA::from(alt![eps!(), sym!('A')]);
+        let actual = Enfa::from(&alt![eps!(), sym!('A')]);
         assert_enfa_eq(expected, actual);
     }
 
     #[test]
     fn test_4() {
-        let expected = ExpectedENFA {
+        let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, None,      2),
-                (2, Some('A'), 3),
-                (3, None,      4),
-                (4, None,      5),
-                (5, None,      1)
+                (0, Etr::None, 2),
+                (2, Etr::Some('A'), 3),
+                (3, Etr::None, 4),
+                (4, Etr::None, 5),
+                (5, Etr::None, 1)
             ],
             finals: set![1]
         };
         // r"A"
-        let actual = ENFA::from(cat![sym!('A'), eps!()]);
+        let actual = Enfa::from(&cat![sym!('A'), eps!()]);
         assert_enfa_eq(expected, actual);
     }
 
     #[test]
     fn test_5() {
-        let expected = ExpectedENFA {
+        let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, None,      1),
-                (0, None,      2),
-                (2, Some('A'), 3),
-                (3, None,      2),
-                (3, None,      1)
+                (0, Etr::None, 1),
+                (0, Etr::None, 2),
+                (2, Etr::Some('A'), 3),
+                (3, Etr::None, 2),
+                (3, Etr::None, 1)
             ],
             finals: set![1]
         };
         // r"A*"
-        let actual = ENFA::from(rep!(sym!('A')));
+        let actual = Enfa::from(&rep!(sym!('A')));
         assert_enfa_eq(expected, actual);
     }
 
     #[test]
     fn test_6() {
-        let expected = ExpectedDFA::<_, char> {
+        let expected = ExpectedDfa::<_, char> {
             initial: set![0, 1],
             transitions: set![],
             finals: set![set![0, 1]]
         };
         // r""
-        let actual = DFA::from(eps!());
+        let actual = Dfa::from(&eps!());
         assert_dfa_eq(expected, actual);
     }
 
     #[test]
     fn test_7() {
-        let expected = ExpectedDFA {
+        let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
-                (set![0], 'A', set![1])
+                (set![0], Tr::Some('A'), set![1])
             ],
             finals: set![set![1]]
         };
         // r"A"
-        let actual = DFA::from(sym!('A'));
+        let actual = Dfa::from(&sym!('A'));
         assert_dfa_eq(expected, actual);
     }
 
     #[test]
     fn test_8() {
-        let expected = ExpectedDFA {
+        let expected = ExpectedDfa {
             initial: set![0, 1, 2, 3, 4],
             transitions: set![
-                (set![0, 1, 2, 3, 4], 'A', set![1, 5])
+                (set![0, 1, 2, 3, 4], Tr::Some('A'), set![1, 5])
             ],
             finals: set![set![0, 1, 2, 3, 4], set![1, 5]]
         };
         // r"|A"
-        let actual = DFA::from(alt![eps!(), sym!('A')]);
+        let actual = Dfa::from(&alt![eps!(), sym!('A')]);
         assert_dfa_eq(expected, actual);
     }
 
     #[test]
     fn test_9() {
-        let expected = ExpectedDFA {
+        let expected = ExpectedDfa {
             initial: set![0, 2],
             transitions: set![
-                (set![0, 2], 'A', set![1, 3, 4, 5])
+                (set![0, 2], Tr::Some('A'), set![1, 3, 4, 5])
             ],
             finals: set![set![1, 3, 4, 5]]
         };
         // r"A"
-        let actual = DFA::from(cat![sym!('A'), eps!()]);
+        let actual = Dfa::from(&cat![sym!('A'), eps!()]);
         assert_dfa_eq(expected, actual);
     }
 
     #[test]
     fn test_10() {
-        let expected = ExpectedDFA {
+        let expected = ExpectedDfa {
             initial: set![0, 1, 2],
             transitions: set![
-                (set![0, 1, 2], 'A', set![1, 2, 3]),
-                (set![1, 2, 3], 'A', set![1, 2, 3])
+                (set![0, 1, 2], Tr::Some('A'), set![1, 2, 3]),
+                (set![1, 2, 3], Tr::Some('A'), set![1, 2, 3])
             ],
             finals: set![set![0, 1, 2], set![1, 2, 3]]
         };
         // r"A*"
-        let actual = DFA::from(rep!(sym!('A')));
+        let actual = Dfa::from(&rep!(sym!('A')));
         assert_dfa_eq(expected, actual);
     }
 
