@@ -1,12 +1,14 @@
 use std::ops::AddAssign;
-
-use num::{Bounded, One};
+use num::{
+    Bounded,
+    One,
+};
 
 #[macro_use]
 pub mod util;
 pub mod re;
 
-pub use crate::re::RE;
+pub use crate::re::Re;
 
 pub trait StateGenerator {
     type State;

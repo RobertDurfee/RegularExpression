@@ -1,119 +1,113 @@
-use std::collections::BTreeSet as Set;
-
+use std::{
+    collections::BTreeSet as Set,
+    u32,
+};
+use ::interval_map::{
+    Interval,
+    interval_map,
+};
 use finite_automata::{
-    Etr,
-    Tr,
-    Subsume,
-    states_contains_from,
-    states_contains_all_from,
     Enfa,
     Nfa,
     Dfa,
+    Subsume,
+    states_contains_from,
+    states_contains_all_from,
 };
-
 use crate::{
+    util::interval::*,
     StateGenerator,
-    SimpleStateGenerator
+    SimpleStateGenerator,
 };
 
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum RE {
-    Epsilon,
-    Symbol { symbol: char },
-    Alternation { res: Vec<RE> },
-    Concatenation { res: Vec<RE> },
-    Repetition { re: Box<RE> },
+pub enum Re {
+    SymbolSet { intervals: Vec<Interval<u32>> },
+    NegatedSymbolSet { intervals: Vec<Interval<u32>> },
+    Alternation { res: Vec<Re> },
+    Concatenation { res: Vec<Re> },
+    Repetition { re: Box<Re> },
 }
 
-impl RE {
-    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, char> {
+impl Re {
+    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, u32> {
         match self {
-            RE::Epsilon => {
-                let mut eps = Enfa::new(states.next_initial());
-                let eps_final_index = eps.states_insert(states.next_final());
-                let eps_sink_index = eps.states_insert(states.next_sink());
-                eps.transitions_insert((eps.initial_index(), Etr::Epsilon, eps_final_index));
-                eps.transitions_insert((eps.initial_index(), Etr::Else, eps_sink_index));
-                eps.transitions_insert((eps_final_index, Etr::Else, eps_sink_index));
-                eps.transitions_insert((eps_sink_index, Etr::Else, eps_sink_index));
-                eps.set_final(eps_final_index);
-                eps
-            },
-            RE::Symbol { symbol } => {
+            Re::SymbolSet { intervals } => {
                 let mut sym = Enfa::new(states.next_initial());
                 let sym_final_index = sym.states_insert(states.next_final());
-                let sym_sink_index = sym.states_insert(states.next_sink());
-                sym.transitions_insert((sym.initial_index(), Etr::Tr(symbol.clone()), sym_final_index));
-                sym.transitions_insert((sym.initial_index(), Etr::Else, sym_sink_index));
-                sym.transitions_insert((sym_final_index, Etr::Else, sym_sink_index));
-                sym.transitions_insert((sym_sink_index, Etr::Else, sym_sink_index));
+                if intervals.len() > 0 {
+                    for interval in intervals {
+                        sym.transitions_insert((sym.initial_index(), interval.clone(), sym_final_index));
+                    }
+                } else {
+                    sym.transitions_insert((sym.initial_index(), empty(), sym_final_index));
+                }
                 sym.set_final(sym_final_index);
                 sym
             },
-            RE::Alternation { res } => {
+            Re::NegatedSymbolSet { intervals } => {
+                let mut neg = Enfa::new(states.next_initial());
+                let neg_final_index = neg.states_insert(states.next_final());
+                let mut negated_intervals = interval_map![all() => true];
+                for interval in intervals {
+                    negated_intervals.update(&interval, |_| Some(false));
+                }
+                for (negated_interval, is_negated) in negated_intervals {
+                    if is_negated {
+                        neg.transitions_insert((neg.initial_index(), negated_interval, neg_final_index));
+                    }
+                }
+                neg.set_final(neg_final_index);
+                neg
+            },
+            Re::Alternation { res } => {
                 let mut alt = Enfa::new(states.next_initial());
                 let alt_final_index = alt.states_insert(states.next_final());
-                let alt_sink_index = alt.states_insert(states.next_sink());
-                alt.transitions_insert((alt.initial_index(), Etr::Else, alt_sink_index));
                 for re in res {
                     let re = re.into_enfa(states.disable_final());
                     alt.subsume(&re);
                     let re_initial_index = states_contains_from(&alt, &re, re.initial_index()).expect("state does not exist");
-                    alt.transitions_insert((alt.initial_index(), Etr::Epsilon, re_initial_index));
+                    alt.transitions_insert((alt.initial_index(), empty(), re_initial_index));
                     for re_final_index in re.final_indices() {
                         let re_final_index = states_contains_from(&alt, &re, re_final_index).expect("state does not exist");
-                        alt.transitions_insert((re_final_index, Etr::Epsilon, alt_final_index));
-                        alt.transitions_insert((re_final_index, Etr::Else, alt_sink_index));
+                        alt.transitions_insert((re_final_index, empty(), alt_final_index));
                     }
                 }
-                alt.transitions_insert((alt_final_index, Etr::Else, alt_sink_index));
-                alt.transitions_insert((alt_sink_index, Etr::Else, alt_sink_index));
                 alt.set_final(alt_final_index);
                 alt
             },
-            RE::Concatenation { res } => {
-                let mut cat = Enfa::new(states.next_initial());
-                let cat_final_index = cat.states_insert(states.next_final());
-                let cat_sink_index = cat.states_insert(states.next_sink());
-                let mut prev_re_final_indices = set![cat.initial_index()];
-                cat.transitions_insert((cat.initial_index(), Etr::Else, cat_sink_index));
+            Re::Concatenation { res } => {
+                let mut con = Enfa::new(states.next_initial());
+                let con_final_index = con.states_insert(states.next_final());
+                let mut prev_re_final_indices = set![con.initial_index()];
                 for re in res {
                     let re = re.into_enfa(states.disable_final());
-                    cat.subsume(&re);
-                    let re_initial_index = states_contains_from(&cat, &re, re.initial_index()).expect("state does not exist");
+                    con.subsume(&re);
+                    let re_initial_index = states_contains_from(&con, &re, re.initial_index()).expect("state does not exist");
                     for prev_re_final_index in prev_re_final_indices {
-                        cat.transitions_insert((prev_re_final_index, Etr::Epsilon, re_initial_index));
-                        cat.transitions_insert((prev_re_final_index, Etr::Else, cat_sink_index));
+                        con.transitions_insert((prev_re_final_index, empty(), re_initial_index));
                     }
-                    prev_re_final_indices = states_contains_all_from(&cat, &re, re.final_indices()).expect("not all states exist").collect();
+                    prev_re_final_indices = states_contains_all_from(&con, &re, re.final_indices()).expect("not all states exist").collect();
                 }
                 for prev_re_final_index in prev_re_final_indices {
-                    cat.transitions_insert((prev_re_final_index, Etr::Epsilon, cat_final_index));
-                    cat.transitions_insert((prev_re_final_index, Etr::Else, cat_sink_index));
+                    con.transitions_insert((prev_re_final_index, empty(), con_final_index));
                 }
-                cat.transitions_insert((cat_final_index, Etr::Else, cat_sink_index));
-                cat.transitions_insert((cat_sink_index, Etr::Else, cat_sink_index));
-                cat.set_final(cat_final_index);
-                cat
+                con.set_final(con_final_index);
+                con
             },
-            RE::Repetition { re } => {
+            Re::Repetition { re } => {
                 let mut rep = Enfa::new(states.next_initial());
                 let rep_final_index = rep.states_insert(states.next_final());
-                let rep_sink_index = rep.states_insert(states.next_sink());
                 let re = re.into_enfa(states.disable_final());
                 rep.subsume(&re);
                 let re_initial_index = states_contains_from(&rep, &re, re.initial_index()).expect("state does not exist");
-                rep.transitions_insert((rep.initial_index(), Etr::Epsilon, re_initial_index));
-                rep.transitions_insert((rep.initial_index(), Etr::Else, rep_sink_index));
+                rep.transitions_insert((rep.initial_index(), empty(), re_initial_index));
                 for re_final_index in re.final_indices() {
                     let re_final_index = states_contains_from(&rep, &re, re_final_index).expect("state does not exist");
-                    rep.transitions_insert((re_final_index, Etr::Epsilon, rep_final_index));
-                    rep.transitions_insert((re_final_index, Etr::Epsilon, re_initial_index));
-                    rep.transitions_insert((re_final_index, Etr::Else, rep_sink_index));
+                    rep.transitions_insert((re_final_index, empty(), rep_final_index));
+                    rep.transitions_insert((re_final_index, empty(), re_initial_index));
                 }
-                rep.transitions_insert((rep.initial_index(), Etr::Epsilon, rep_final_index));
-                rep.transitions_insert((rep_final_index, Etr::Else, rep_sink_index));
-                rep.transitions_insert((rep_sink_index, Etr::Else, rep_sink_index));
+                rep.transitions_insert((rep.initial_index(), empty(), rep_final_index));
                 rep.set_final(rep_final_index);
                 rep
             },
@@ -121,77 +115,82 @@ impl RE {
     }
 
     pub fn is_match(&self, text: &str) -> bool {
-        let dfa: Dfa<Set<u32>, char> = Dfa::from(&self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
+        let dfa: Dfa<Set<u32>, u32> = Dfa::from(&self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
         let mut source_index = dfa.initial_index();
         for character in text.chars() {
-            if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &Tr::Tr(character))) {
-                let (_, _, target_index) = dfa.transitions_index(transition_index);
-                source_index = target_index;
-            } else if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &Tr::Else)) {
+            if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
                 let (_, _, target_index) = dfa.transitions_index(transition_index);
                 source_index = target_index;
             } else {
-                panic!("malformed dfa");
+                return false;
             }
         }
         dfa.is_final(source_index)
     }
 }
 
-impl From<&RE> for Enfa<u32, char> {
-    fn from(re: &RE) -> Enfa<u32, char> {
+impl From<&Re> for Enfa<u32, u32> {
+    fn from(re: &Re) -> Enfa<u32, u32> {
         re.into_enfa(&mut SimpleStateGenerator::new())
     }
 }
 
-impl From<&RE> for Nfa<Set<u32>, char> {
-    fn from(re: &RE) -> Nfa<Set<u32>, char> {
+impl From<&Re> for Nfa<Set<u32>, u32> {
+    fn from(re: &Re) -> Nfa<Set<u32>, u32> {
         Nfa::from(&Enfa::from(re))
     }
 }
 
-impl From<&RE> for Dfa<Set<u32>, char> {
-    fn from(re: &RE) -> Dfa<Set<u32>, char> {
+impl From<&Re> for Dfa<Set<u32>, u32> {
+    fn from(re: &Re) -> Dfa<Set<u32>, u32> {
         Dfa::from(&Enfa::from(re))
     }
 }
 
 #[macro_export]
-macro_rules! eps {
-    () => {{
-        $crate::re::RE::Epsilon
+macro_rules! sym {
+    ($($x:expr),*) => {{
+        #[allow(unused_mut)]
+        let mut temp_vec = Vec::new();
+        $(temp_vec.push($x);)*
+        $crate::re::Re::SymbolSet { intervals: temp_vec }
     }}
 }
 
 #[macro_export]
-macro_rules! sym {
-    ($x:expr) => {{
-        $crate::re::RE::Symbol { symbol: $x }
+macro_rules! neg {
+    ($($x:expr),*) => {{
+        #[allow(unused_mut)]
+        let mut temp_vec = Vec::new();
+        $(temp_vec.push($x);)*
+        $crate::re::Re::NegatedSymbolSet { intervals: temp_vec }
     }}
 }
 
 #[macro_export]
 macro_rules! alt {
     ($($x:expr),*) => {{
+        #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::RE::Alternation { res: temp_vec }
+        $crate::re::Re::Alternation { res: temp_vec }
     }}
 }
 
 #[macro_export]
-macro_rules! cat {
+macro_rules! con {
     ($($x:expr),*) => {{
+        #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::RE::Concatenation { res: temp_vec }
+        $crate::re::Re::Concatenation { res: temp_vec }
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr) => {{
-        $crate::re::RE::Repetition { re: Box::new($x) }
+        $crate::re::Re::Repetition { re: Box::new($x) }
     }}
 }
 
@@ -200,18 +199,424 @@ mod tests {
     use std::{
         collections::BTreeSet as Set,
         fmt::Debug,
+        u32,
     };
-
+    use interval_map::Interval;
     use finite_automata::{
-        Etr,
-        Tr,
         Enfa,
         Dfa,
     };
+    use crate::util::interval::*;
+
+    #[test]
+    fn test_enfa_epsilon() {
+         let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, empty(), 1)
+            ],
+            finals: set![1]
+        };
+        // r"[]"
+        let actual = Enfa::from(&sym![]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_symbol() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, singleton(A), 1)
+            ],
+            finals: set![1]
+        };
+        // r"A"
+        let actual = Enfa::from(&sym![singleton(A)]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_negated_symbol() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, less_than(A), 1),
+                (0, greater_than(A), 1)
+            ],
+            finals: set![1]
+        };
+        // r"[^A]"
+        let actual = Enfa::from(&neg![singleton(A)]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_symbol_set() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, closed(A, Z), 1),
+                (0, closed(a, z), 1)
+            ],
+            finals: set![1]
+        };
+        // r"[A-Za-z]"
+        let actual = Enfa::from(&sym![closed(A, Z), closed(a, z)]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_negated_symbol_set() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, less_than(A), 1),
+                (0, open(Z, a), 1),
+                (0, greater_than(z), 1)
+            ],
+            finals: set![1]
+        };
+        // r"[^A-Za-z]"
+        let actual = Enfa::from(&neg![closed(A, Z), closed(a, z)]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_alternation() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, empty(), 2),
+                (0, empty(), 4),
+                (2, singleton(A), 3),
+                (3, empty(), 1),
+                (4, singleton(B), 5),
+                (5, empty(), 1)
+            ],
+            finals: set![1]
+        };
+        // r"A|B"
+        let actual = Enfa::from(&alt![sym![singleton(A)], sym![singleton(B)]]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_concatenation() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, empty(), 2),
+                (2, singleton(A), 3),
+                (3, empty(), 4),
+                (4, singleton(B), 5),
+                (5, empty(), 1)
+            ],
+            finals: set![1]
+        };
+        // r"AB"
+        let actual = Enfa::from(&con![sym![singleton(A)], sym![singleton(B)]]);
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_enfa_repetition() {
+        let expected = ExpectedEnfa {
+            initial: 0,
+            transitions: set![
+                (0, empty(), 2),
+                (0, empty(), 1),
+                (2, singleton(A), 3),
+                (3, empty(), 1),
+                (3, empty(), 2)
+            ],
+            finals: set![1]
+        };
+        // r"A*"
+        let actual = Enfa::from(&rep!(sym![singleton(A)]));
+        assert_enfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_epsilon() {
+        let expected = ExpectedDfa {
+            initial: set![0, 1],
+            transitions: set![],
+            finals: set![set![0, 1]]
+        };
+        // r"[]"
+        let actual = Dfa::from(&sym![]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_symbol() {
+        let expected = ExpectedDfa {
+            initial: set![0],
+            transitions: set![
+                (set![0], singleton(A), set![1])
+            ],
+            finals: set![set![1]]
+        };
+        // r"A"
+        let actual = Dfa::from(&sym![singleton(A)]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_negated_symbol() {
+        let expected = ExpectedDfa {
+            initial: set![0],
+            transitions: set![
+                (set![0], less_than(A), set![1]),
+                (set![0], greater_than(A), set![1])
+            ],
+            finals: set![set![1]]
+        };
+        // r"[^A]"
+        let actual = Dfa::from(&neg![singleton(A)]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_symbol_set() {
+        let expected = ExpectedDfa {
+            initial: set![0],
+            transitions: set![
+                (set![0], closed(A, Z), set![1]),
+                (set![0], closed(a, z), set![1])
+            ],
+            finals: set![set![1]]
+        };
+        // r"[A-Za-z]"
+        let actual = Dfa::from(&sym![closed(A, Z), closed(a, z)]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_negated_symbol_set() {
+        let expected = ExpectedDfa {
+            initial: set![0],
+            transitions: set![
+                (set![0], less_than(A), set![1]),
+                (set![0], open(Z, a), set![1]),
+                (set![0], greater_than(z), set![1])
+            ],
+            finals: set![set![1]]
+        };
+        // r"[^A-Za-z]"
+        let actual = Dfa::from(&neg![closed(A, Z), closed(a, z)]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_alternation() {
+        let expected = ExpectedDfa {
+            initial: set![0, 2, 4],
+            transitions: set![
+                (set![0, 2, 4], singleton(A), set![1, 3]),
+                (set![0, 2, 4], singleton(B), set![1, 5])
+            ],
+            finals: set![set![1, 3], set![1, 5]]
+        };
+        // r"A|B"
+        let actual = Dfa::from(&alt![sym![singleton(A)], sym![singleton(B)]]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_concatenation() {
+        let expected = ExpectedDfa {
+            initial: set![0, 2],
+            transitions: set![
+                (set![0, 2], singleton(A), set![3, 4]),
+                (set![3, 4], singleton(B), set![1, 5])
+            ],
+            finals: set![set![1, 5]]
+        };
+        // r"AB"
+        let actual = Dfa::from(&con![sym![singleton(A)], sym![singleton(B)]]);
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_dfa_repetition() {
+        let expected = ExpectedDfa {
+            initial: set![0, 1, 2],
+            transitions: set![
+                (set![0, 1, 2], singleton(A), set![1, 2, 3]),
+                (set![1, 2, 3], singleton(A), set![1, 2, 3])
+            ],
+            finals: set![set![0, 1, 2], set![1, 2, 3]]
+        };
+        // r"A*"
+        let actual = Dfa::from(&rep!(sym![singleton(A)]));
+        assert_dfa_eq(expected, actual);
+    }
+
+    #[test]
+    fn test_match_epsilon_1() {
+        let expected = true;
+        // r"[]"
+        let actual = sym![].is_match("");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_epsilon_2() {
+        let expected = false;
+        // r"[]"
+        let actual = sym![].is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_symbol_1() {
+        let expected = true;
+        // r"A"
+        let actual = sym![singleton(A)].is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_symbol_2() {
+        let expected = false;
+        // r"A"
+        let actual = sym![singleton(A)].is_match("B");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_negated_symbol_1() {
+        let expected = true;
+        // r"[^A]"
+        let actual = neg![singleton(A)].is_match("B");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_negated_symbol_2() {
+        let expected = false;
+        // r"[^A]"
+        let actual = neg![singleton(A)].is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_symbol_set_1() {
+        let expected = true;
+        // r"[A-Za-z]"
+        let actual = sym![closed(A, Z), closed(a, z)].is_match("D");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_symbol_set_2() {
+        let expected = false;
+        // r"[A-Za-z]"
+        let actual = sym![closed(A, Z), closed(a, z)].is_match("_");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_negated_symbol_set_1() {
+        let expected = true;
+        // r"[^A-Za-z]"
+        let actual = neg![closed(A, Z), closed(a, z)].is_match("_");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_negated_symbol_set_2() {
+        let expected = false;
+        // r"[^A-Za-z]"
+        let actual = neg![closed(A, Z), closed(a, z)].is_match("D");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_alternation_1() {
+        let expected = true;
+        // r"A|B"
+        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("A");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_alternation_2() {
+        let expected = true;
+        // r"A|B"
+        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("B");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_alternation_3() {
+        let expected = false;
+        // r"A|B"
+        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("C");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_concatenation_1() {
+        let expected = true;
+        // r"AB"
+        let actual = con![sym![singleton(A)], sym![singleton(B)]].is_match("AB");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_concatenation_2() {
+        let expected = false;
+        // r"AB"
+        let actual = con![sym![singleton(A)], sym![singleton(B)]].is_match("AA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_repetition_1() {
+        let expected = true;
+        // r"A*"
+        let actual = rep!(sym![singleton(A)]).is_match("AAAAAAAAA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_repetition_2() {
+        let expected = false;
+        // r"A*"
+        let actual = rep!(sym![singleton(A)]).is_match("AAAABAAAA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_complex_1() {
+        let expected = true;
+        // r"(A|B)*(AAA|BBB)(A|B)*"
+        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBBA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_complex_2() {
+        let expected = false;
+        // r"(A|B)*(AAA|BBB)(A|B)*"
+        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBA");
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_match_complex_3() {
+        let expected = true;
+        // r"(A|B)*(AAA|BBB)(A|B)*"
+        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBAAA");
+        assert_eq!(expected, actual);
+    }
 
     struct ExpectedEnfa<S, T> {
         initial: S,
-        transitions: Set<(S, Etr<T>, S)>,
+        transitions: Set<(S, Interval<T>, S)>,
         finals: Set<S>,
     }
 
@@ -221,9 +626,17 @@ mod tests {
         assert_eq!(expected.finals, actual.states_slice(actual.final_indices()).cloned().collect());
     }
 
+    static A: u32 = 65;
+    static B: u32 = 66;
+    static Z: u32 = 90;
+    #[allow(non_upper_case_globals)]
+    static a: u32 = 97;
+    #[allow(non_upper_case_globals)]
+    static z: u32 = 122;
+
     struct ExpectedDfa<S, T> {
         initial: S,
-        transitions: Set<(S, Tr<T>, S)>,
+        transitions: Set<(S, Interval<T>, S)>,
         finals: Set<S>,
     }
 
@@ -231,320 +644,5 @@ mod tests {
         assert_eq!(expected.initial, actual.states_index(actual.initial_index()).clone());
         assert_eq!(expected.transitions, actual.transitions_slice(actual.transition_indices()).map(|(source, transition, target)| (actual.states_index(source).clone(), transition.clone(), actual.states_index(target).clone())).collect());
         assert_eq!(expected.finals, actual.states_slice(actual.final_indices()).cloned().collect());
-    }
-
-    #[test]
-    fn test_1() {
-         let expected = ExpectedEnfa {
-            initial: 0,
-            transitions: set![
-                (0, Etr::Epsilon, 1),
-                (0, Etr::Else, 2),
-                (1, Etr::Else, 2),
-                (2, Etr::Else, 2)
-            ],
-            finals: set![1]
-        };
-        // r""
-        let actual = Enfa::from(&eps!());
-        assert_enfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_2() {
-        let expected = ExpectedEnfa {
-            initial: 0,
-            transitions: set![
-                (0, Etr::Tr('A'), 1),
-                (0, Etr::Else, 2),
-                (1, Etr::Else, 2),
-                (2, Etr::Else, 2)
-            ],
-            finals: set![1]
-        };
-        // r"A"
-        let actual = Enfa::from(&sym!('A'));
-        assert_enfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_3() {
-        let expected = ExpectedEnfa {
-            initial: 0,
-            transitions: set![
-                (0, Etr::Else, 2),
-                (0, Etr::Epsilon, 3),
-                (0, Etr::Epsilon, 6),
-                (1, Etr::Else, 2),
-                (2, Etr::Else, 2),
-                (3, Etr::Epsilon, 4),
-                (3, Etr::Else, 5),
-                (4, Etr::Epsilon, 1),
-                (4, Etr::Else, 2),
-                (4, Etr::Else, 5),
-                (5, Etr::Else, 5),
-                (6, Etr::Tr('A'), 7),
-                (6, Etr::Else, 8),
-                (7, Etr::Epsilon, 1),
-                (7, Etr::Else, 2),
-                (7, Etr::Else, 8),
-                (8, Etr::Else, 8)
-            ],
-            finals: set![1]
-        };
-        // r"|A"
-        let actual = Enfa::from(&alt![eps!(), sym!('A')]);
-        assert_enfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_4() {
-        let expected = ExpectedEnfa {
-            initial: 0,
-            transitions: set![
-                (0, Etr::Else, 2),
-                (0, Etr::Epsilon, 3),
-                (1, Etr::Else, 2),
-                (2, Etr::Else, 2),
-                (3, Etr::Tr('A'), 4),
-                (3, Etr::Else, 5),
-                (4, Etr::Else, 2),
-                (4, Etr::Else, 5),
-                (4, Etr::Epsilon, 6),
-                (5, Etr::Else, 5),
-                (6, Etr::Epsilon, 7),
-                (6, Etr::Else, 8),
-                (7, Etr::Else, 2),
-                (7, Etr::Epsilon, 1),
-                (7, Etr::Else, 8),
-                (8, Etr::Else, 8)
-            ],
-            finals: set![1]
-        };
-        // r"A"
-        let actual = Enfa::from(&cat![sym!('A'), eps!()]);
-        assert_enfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_5() {
-        let expected = ExpectedEnfa {
-            initial: 0,
-            transitions: set![
-                (0, Etr::Epsilon, 1),
-                (0, Etr::Else, 2),
-                (0, Etr::Epsilon, 3),
-                (1, Etr::Else, 2),
-                (2, Etr::Else, 2),
-                (3, Etr::Tr('A'), 4),
-                (3, Etr::Else, 5),
-                (4, Etr::Epsilon, 1),
-                (4, Etr::Epsilon, 3),
-                (4, Etr::Else, 2),
-                (4, Etr::Else, 5),
-                (5, Etr::Else, 5)
-            ],
-            finals: set![1]
-        };
-        // r"A*"
-        let actual = Enfa::from(&rep!(sym!('A')));
-        assert_enfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_6() {
-        let expected = ExpectedDfa {
-            initial: set![0, 1, 2],
-            transitions: set![
-                (set![0, 1, 2], Tr::Else, set![2]),
-                (set![2], Tr::Else, set![2])
-            ],
-            finals: set![set![0, 1, 2]]
-        };
-        // r""
-        let actual = Dfa::from(&eps!());
-        assert_dfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_7() {
-        let expected = ExpectedDfa {
-            initial: set![0, 2],
-            transitions: set![
-                (set![0, 2], Tr::Tr('A'), set![1, 2]),
-                (set![0, 2], Tr::Else, set![2]),
-                (set![2], Tr::Else, set![2]),
-                (set![1, 2], Tr::Else, set![2])
-            ],
-            finals: set![set![1, 2]]
-        };
-        // r"A"
-        let actual = Dfa::from(&sym!('A'));
-        assert_dfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_8() {
-        let expected = ExpectedDfa {
-            initial: set![0, 1, 2, 3, 4, 6, 8],
-            transitions: set![
-                (set![0, 1, 2, 3, 4, 6, 8], Tr::Tr('A'), set![1, 2, 5, 7, 8]),
-                (set![0, 1, 2, 3, 4, 6, 8], Tr::Else, set![2, 5, 8]),
-                (set![1, 2, 5, 7, 8], Tr::Else, set![2, 5, 8]),
-                (set![2, 5, 8], Tr::Else, set![2, 5, 8])
-            ],
-            finals: set![set![0, 1, 2, 3, 4, 6, 8], set![1, 2, 5, 7, 8]]
-        };
-        // r"|A"
-        let actual = Dfa::from(&alt![eps!(), sym!('A')]);
-        assert_dfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_9() {
-        let expected = ExpectedDfa {
-            initial: set![0, 3, 5],
-            transitions: set![
-                (set![0, 3, 5], Tr::Tr('A'), set![1, 2, 4, 5, 6, 7]),
-                (set![0, 3, 5], Tr::Else, set![2, 5]),
-                (set![1, 2, 4, 5, 6, 7], Tr::Else, set![2, 5, 8]),
-                (set![2, 5], Tr::Else, set![2, 5]),
-                (set![2, 5, 8], Tr::Else, set![2, 5, 8])
-            ],
-            finals: set![set![1, 2, 4, 5, 6, 7]]
-        };
-        // r"A"
-        let actual = Dfa::from(&cat![sym!('A'), eps!()]);
-        assert_dfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_10() {
-        let expected = ExpectedDfa {
-            initial: set![0, 1, 2, 3, 5],
-            transitions: set![
-                (set![0, 1, 2, 3, 5], Tr::Tr('A'), set![1, 2, 3, 4, 5]),
-                (set![0, 1, 2, 3, 5], Tr::Else, set![2, 5]),
-                (set![1, 2, 3, 4, 5], Tr::Tr('A'), set![1, 2, 3, 4, 5]),
-                (set![1, 2, 3, 4, 5], Tr::Else, set![2, 5]),
-                (set![2, 5], Tr::Else, set![2, 5])
-            ],
-            finals: set![set![0, 1, 2, 3, 5], set![1, 2, 3, 4, 5]]
-        };
-        // r"A*"
-        let actual = Dfa::from(&rep!(sym!('A')));
-        assert_dfa_eq(expected, actual);
-    }
-
-    #[test]
-    fn test_11() {
-        let expected = true;
-        // r""
-        let actual = eps!().is_match("");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_12() {
-        let expected = false;
-        // r""
-        let actual = eps!().is_match("A");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_13() {
-        let expected = true;
-        // r"A"
-        let actual = sym!('A').is_match("A");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_14() {
-        let expected = false;
-        // r"A"
-        let actual = sym!('A').is_match("B");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_15() {
-        let expected = true;
-        // r"A|B"
-        let actual = alt![sym!('A'), sym!('B')].is_match("A");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_16() {
-        let expected = true;
-        // r"A|B"
-        let actual = alt![sym!('A'), sym!('B')].is_match("B");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_17() {
-        let expected = false;
-        // r"A|B"
-        let actual = alt![sym!('A'), sym!('B')].is_match("C");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_18() {
-        let expected = true;
-        // r"AB"
-        let actual = cat![sym!('A'), sym!('B')].is_match("AB");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_19() {
-        let expected = false;
-        // r"AB"
-        let actual = cat![sym!('A'), sym!('B')].is_match("AA");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_20() {
-        let expected = true;
-        // r"A*"
-        let actual = rep!(sym!('A')).is_match("AAAAAAAAA");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_21() {
-        let expected = false;
-        // r"A*"
-        let actual = rep!(sym!('A')).is_match("AAAABAAAA");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_22() {
-        let expected = true;
-        // r"(0|1)*(000|111)(0|1)*"
-        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("01110");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_23() {
-        let expected = false;
-        // r"(0|1)*(000|111)(0|1)*"
-        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("0110");
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_24() {
-        let expected = true;
-        // r"(0|1)*(000|111)(0|1)*"
-        let actual = cat![rep![alt![sym!('0'), sym!('1')]], alt![cat![sym!('0'), sym!('0'), sym!('0')], cat![sym!('1'), sym!('1'), sym!('1')]], rep![alt![sym!('0'), sym!('1')]]].is_match("011000");
-        assert_eq!(expected, actual);
     }
 }

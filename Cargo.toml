@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 num = "0.3"
+interval_map = { git = "https://github.com/RobertDurfee/IntervalMap" }
 finite_automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }
