@@ -9,7 +9,7 @@ pub mod util;
 pub mod re;
 
 pub use crate::re::{
-    ReKind,
+    Pattern,
     Re,
 };
 
