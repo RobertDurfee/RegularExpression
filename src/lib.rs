@@ -8,7 +8,10 @@ use num::{
 pub mod util;
 pub mod re;
 
-pub use crate::re::Re;
+pub use crate::re::{
+    ReKind,
+    Re,
+};
 
 pub trait StateGenerator {
     type State;
