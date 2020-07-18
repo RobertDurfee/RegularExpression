@@ -20,8 +20,8 @@ use crate::{
     SimpleStateGenerator,
 };
 
-#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum Re {
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ReKind {
     SymbolSet { intervals: Vec<Interval<u32>> },
     NegatedSymbolSet { intervals: Vec<Interval<u32>> },
     Alternation { res: Vec<Re> },
@@ -29,10 +29,45 @@ pub enum Re {
     Repetition { re: Box<Re> },
 }
 
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Re {
+    kind: ReKind,
+    dfa: Option<Dfa<Set<u32>, u32>>,
+}
+
+impl From<ReKind> for Re {
+    fn from(kind: ReKind) -> Re {
+        Re { kind, dfa: None }
+    }
+}
+
 impl Re {
-    pub fn into_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, u32> {
-        match self {
-            Re::SymbolSet { intervals } => {
+    pub fn compile(&mut self) {
+        if self.dfa.is_none() {
+            self.dfa = Some(Dfa::from(&self.as_enfa(&mut SimpleStateGenerator::new())));
+        }
+    }
+
+    pub fn is_match(&self, text: &str) -> bool {
+        if let Some(dfa) = self.dfa.as_ref() {
+            let mut source_index = dfa.initial_index();
+            for character in text.chars() {
+                if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
+                    let (_, _, target_index) = dfa.transitions_index(transition_index);
+                    source_index = target_index;
+                } else {
+                    return false;
+                }
+            }
+            dfa.is_final(source_index)
+        } else {
+            panic!("regular expression must be compiled")
+        }
+    }
+
+    pub fn as_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, u32> {
+        match &self.kind {
+            ReKind::SymbolSet { intervals } => {
                 let mut sym = Enfa::new(states.next_initial());
                 let sym_final_index = sym.states_insert(states.next_final());
                 if intervals.len() > 0 {
@@ -45,7 +80,7 @@ impl Re {
                 sym.set_final(sym_final_index);
                 sym
             },
-            Re::NegatedSymbolSet { intervals } => {
+            ReKind::NegatedSymbolSet { intervals } => {
                 let mut neg = Enfa::new(states.next_initial());
                 let neg_final_index = neg.states_insert(states.next_final());
                 let mut negated_intervals = interval_map![all() => true];
@@ -60,11 +95,11 @@ impl Re {
                 neg.set_final(neg_final_index);
                 neg
             },
-            Re::Alternation { res } => {
+            ReKind::Alternation { res } => {
                 let mut alt = Enfa::new(states.next_initial());
                 let alt_final_index = alt.states_insert(states.next_final());
                 for re in res {
-                    let re = re.into_enfa(states.disable_final());
+                    let re = re.as_enfa(states.disable_final());
                     alt.subsume(&re);
                     let re_initial_index = states_contains_from(&alt, &re, re.initial_index()).expect("state does not exist");
                     alt.transitions_insert((alt.initial_index(), empty(), re_initial_index));
@@ -76,12 +111,12 @@ impl Re {
                 alt.set_final(alt_final_index);
                 alt
             },
-            Re::Concatenation { res } => {
+            ReKind::Concatenation { res } => {
                 let mut con = Enfa::new(states.next_initial());
                 let con_final_index = con.states_insert(states.next_final());
                 let mut prev_re_final_indices = set![con.initial_index()];
                 for re in res {
-                    let re = re.into_enfa(states.disable_final());
+                    let re = re.as_enfa(states.disable_final());
                     con.subsume(&re);
                     let re_initial_index = states_contains_from(&con, &re, re.initial_index()).expect("state does not exist");
                     for prev_re_final_index in prev_re_final_indices {
@@ -95,10 +130,10 @@ impl Re {
                 con.set_final(con_final_index);
                 con
             },
-            Re::Repetition { re } => {
+            ReKind::Repetition { re } => {
                 let mut rep = Enfa::new(states.next_initial());
                 let rep_final_index = rep.states_insert(states.next_final());
-                let re = re.into_enfa(states.disable_final());
+                let re = re.as_enfa(states.disable_final());
                 rep.subsume(&re);
                 let re_initial_index = states_contains_from(&rep, &re, re.initial_index()).expect("state does not exist");
                 rep.transitions_insert((rep.initial_index(), empty(), re_initial_index));
@@ -113,25 +148,11 @@ impl Re {
             },
         }
     }
-
-    pub fn is_match(&self, text: &str) -> bool {
-        let dfa: Dfa<Set<u32>, u32> = Dfa::from(&self.into_enfa(&mut SimpleStateGenerator::new())); // TODO: compilation should be pulled out
-        let mut source_index = dfa.initial_index();
-        for character in text.chars() {
-            if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
-                let (_, _, target_index) = dfa.transitions_index(transition_index);
-                source_index = target_index;
-            } else {
-                return false;
-            }
-        }
-        dfa.is_final(source_index)
-    }
 }
 
 impl From<&Re> for Enfa<u32, u32> {
     fn from(re: &Re) -> Enfa<u32, u32> {
-        re.into_enfa(&mut SimpleStateGenerator::new())
+        re.as_enfa(&mut SimpleStateGenerator::new())
     }
 }
 
@@ -153,7 +174,7 @@ macro_rules! sym {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::SymbolSet { intervals: temp_vec }
+        $crate::re::Re::from($crate::re::ReKind::SymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -163,7 +184,7 @@ macro_rules! neg {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::NegatedSymbolSet { intervals: temp_vec }
+        $crate::re::Re::from($crate::re::ReKind::NegatedSymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -173,7 +194,7 @@ macro_rules! alt {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::Alternation { res: temp_vec }
+        $crate::re::Re::from($crate::re::ReKind::Alternation { res: temp_vec })
     }}
 }
 
@@ -183,14 +204,14 @@ macro_rules! con {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::Concatenation { res: temp_vec }
+        $crate::re::Re::from($crate::re::ReKind::Concatenation { res: temp_vec })
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr) => {{
-        $crate::re::Re::Repetition { re: Box::new($x) }
+        $crate::re::Re::from($crate::re::ReKind::Repetition { re: Box::new($x) })
     }}
 }
 
@@ -456,162 +477,162 @@ mod tests {
 
     #[test]
     fn test_match_epsilon_1() {
-        let expected = true;
         // r"[]"
-        let actual = sym![].is_match("");
-        assert_eq!(expected, actual);
+        let mut re = sym![];
+        re.compile();
+        assert!(re.is_match(""));
     }
 
     #[test]
     fn test_match_epsilon_2() {
-        let expected = false;
         // r"[]"
-        let actual = sym![].is_match("A");
-        assert_eq!(expected, actual);
+        let mut re = sym![];
+        re.compile();
+        assert!(!re.is_match("A"));
     }
 
     #[test]
     fn test_match_symbol_1() {
-        let expected = true;
         // r"A"
-        let actual = sym![singleton(A)].is_match("A");
-        assert_eq!(expected, actual);
+        let mut re = sym![singleton(A)];
+        re.compile();
+        assert!(re.is_match("A"));
     }
 
     #[test]
     fn test_match_symbol_2() {
-        let expected = false;
         // r"A"
-        let actual = sym![singleton(A)].is_match("B");
-        assert_eq!(expected, actual);
+        let mut re = sym![singleton(A)];
+        re.compile();
+        assert!(!re.is_match("B"));
     }
 
     #[test]
     fn test_match_negated_symbol_1() {
-        let expected = true;
         // r"[^A]"
-        let actual = neg![singleton(A)].is_match("B");
-        assert_eq!(expected, actual);
+        let mut re = neg![singleton(A)];
+        re.compile();
+        assert!(re.is_match("B"));
     }
 
     #[test]
     fn test_match_negated_symbol_2() {
-        let expected = false;
         // r"[^A]"
-        let actual = neg![singleton(A)].is_match("A");
-        assert_eq!(expected, actual);
+        let mut re = neg![singleton(A)];
+        re.compile();
+        assert!(!re.is_match("A"));
     }
 
     #[test]
     fn test_match_symbol_set_1() {
-        let expected = true;
         // r"[A-Za-z]"
-        let actual = sym![closed(A, Z), closed(a, z)].is_match("D");
-        assert_eq!(expected, actual);
+        let mut re = sym![closed(A, Z), closed(a, z)];
+        re.compile();
+        assert!(re.is_match("D"));
     }
 
     #[test]
     fn test_match_symbol_set_2() {
-        let expected = false;
         // r"[A-Za-z]"
-        let actual = sym![closed(A, Z), closed(a, z)].is_match("_");
-        assert_eq!(expected, actual);
+        let mut re = sym![closed(A, Z), closed(a, z)];
+        re.compile();
+        assert!(!re.is_match("_"));
     }
 
     #[test]
     fn test_match_negated_symbol_set_1() {
-        let expected = true;
         // r"[^A-Za-z]"
-        let actual = neg![closed(A, Z), closed(a, z)].is_match("_");
-        assert_eq!(expected, actual);
+        let mut re = neg![closed(A, Z), closed(a, z)];
+        re.compile();
+        assert!(re.is_match("_"));
     }
 
     #[test]
     fn test_match_negated_symbol_set_2() {
-        let expected = false;
         // r"[^A-Za-z]"
-        let actual = neg![closed(A, Z), closed(a, z)].is_match("D");
-        assert_eq!(expected, actual);
+        let mut re = neg![closed(A, Z), closed(a, z)];
+        re.compile();
+        assert!(!re.is_match("D"));
     }
 
     #[test]
     fn test_match_alternation_1() {
-        let expected = true;
         // r"A|B"
-        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("A");
-        assert_eq!(expected, actual);
+        let mut re = alt![sym![singleton(A)], sym![singleton(B)]];
+        re.compile();
+        assert!(re.is_match("A"));
     }
 
     #[test]
     fn test_match_alternation_2() {
-        let expected = true;
         // r"A|B"
-        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("B");
-        assert_eq!(expected, actual);
+        let mut re = alt![sym![singleton(A)], sym![singleton(B)]];
+        re.compile();
+        assert!(re.is_match("B"));
     }
 
     #[test]
     fn test_match_alternation_3() {
-        let expected = false;
         // r"A|B"
-        let actual = alt![sym![singleton(A)], sym![singleton(B)]].is_match("C");
-        assert_eq!(expected, actual);
+        let mut re = alt![sym![singleton(A)], sym![singleton(B)]];
+        re.compile();
+        assert!(!re.is_match("C"));
     }
 
     #[test]
     fn test_match_concatenation_1() {
-        let expected = true;
         // r"AB"
-        let actual = con![sym![singleton(A)], sym![singleton(B)]].is_match("AB");
-        assert_eq!(expected, actual);
+        let mut re = con![sym![singleton(A)], sym![singleton(B)]];
+        re.compile();
+        assert!(re.is_match("AB"));
     }
 
     #[test]
     fn test_match_concatenation_2() {
-        let expected = false;
         // r"AB"
-        let actual = con![sym![singleton(A)], sym![singleton(B)]].is_match("AA");
-        assert_eq!(expected, actual);
+        let mut re = con![sym![singleton(A)], sym![singleton(B)]];
+        re.compile();
+        assert!(!re.is_match("AA"));
     }
 
     #[test]
     fn test_match_repetition_1() {
-        let expected = true;
         // r"A*"
-        let actual = rep!(sym![singleton(A)]).is_match("AAAAAAAAA");
-        assert_eq!(expected, actual);
+        let mut re = rep!(sym![singleton(A)]);
+        re.compile();
+        assert!(re.is_match("AAAAAAAAA"));
     }
 
     #[test]
     fn test_match_repetition_2() {
-        let expected = false;
         // r"A*"
-        let actual = rep!(sym![singleton(A)]).is_match("AAAABAAAA");
-        assert_eq!(expected, actual);
+        let mut re = rep!(sym![singleton(A)]);
+        re.compile();
+        assert!(!re.is_match("AAAABAAAA"));
     }
 
     #[test]
     fn test_match_complex_1() {
-        let expected = true;
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBBA");
-        assert_eq!(expected, actual);
+        let mut re = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]];
+        re.compile();
+        assert!(re.is_match("ABBBA"));
     }
 
     #[test]
     fn test_match_complex_2() {
-        let expected = false;
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBA");
-        assert_eq!(expected, actual);
+        let mut re = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]];
+        re.compile();
+        assert!(!re.is_match("ABBA"));
     }
 
     #[test]
     fn test_match_complex_3() {
-        let expected = true;
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let actual = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]].is_match("ABBAAA");
-        assert_eq!(expected, actual);
+        let mut re = con![rep![alt![sym![singleton(A)], sym![singleton(B)]]], alt![con![sym![singleton(A)], sym![singleton(A)], sym![singleton(A)]], con![sym![singleton(B)], sym![singleton(B)], sym![singleton(B)]]], rep![alt![sym![singleton(A)], sym![singleton(B)]]]];
+        re.compile();
+        assert!(re.is_match("ABBAAA"));
     }
 
     struct ExpectedEnfa<S, T> {
