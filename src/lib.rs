@@ -14,7 +14,6 @@ pub trait StateGenerator {
     type State;
 
     fn next_initial(&mut self) -> Self::State;
-    fn next_sink(&mut self) -> Self::State;
     fn next_final(&mut self) -> Self::State;
     fn disable_final(&mut self) -> &mut Self;
     fn enable_final(&mut self) -> &mut Self;
@@ -34,12 +33,6 @@ impl<S: AddAssign + Copy + One> StateGenerator for SimpleStateGenerator<S> {
     type State = S;
 
     fn next_initial(&mut self) -> S {
-        let state = self.state;
-        self.state += S::one();
-        state
-    }
-
-    fn next_sink(&mut self) -> S {
         let state = self.state;
         self.state += S::one();
         state
