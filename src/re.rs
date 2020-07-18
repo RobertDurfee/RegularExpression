@@ -20,7 +20,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Pattern {
+pub enum Expression {
     SymbolSet { intervals: Vec<Interval<u32>> },
     NegatedSymbolSet { intervals: Vec<Interval<u32>> },
     Alternation { res: Vec<Re> },
@@ -30,18 +30,12 @@ pub enum Pattern {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Re {
-    pattern: Pattern,
+    expression: Expression,
     dfa: Option<Dfa<Set<u32>, u32>>,
 }
 
-impl From<Pattern> for Re {
-    fn from(pattern: Pattern) -> Re {
-        Re { pattern, dfa: None }
-    }
-}
-
 impl Re {
-    pub fn parse(_pattern: &str) -> Re {
+    pub fn new(_pattern: &str) -> Re {
         panic!("Not implemented")
     }
 
@@ -69,8 +63,8 @@ impl Re {
     }
 
     pub fn as_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, u32> {
-        match &self.pattern {
-            Pattern::SymbolSet { intervals } => {
+        match &self.expression {
+            Expression::SymbolSet { intervals } => {
                 let mut sym = Enfa::new(states.next_initial());
                 let sym_final_index = sym.states_insert(states.next_final());
                 if intervals.len() > 0 {
@@ -83,7 +77,7 @@ impl Re {
                 sym.set_final(sym_final_index);
                 sym
             },
-            Pattern::NegatedSymbolSet { intervals } => {
+            Expression::NegatedSymbolSet { intervals } => {
                 let mut neg = Enfa::new(states.next_initial());
                 let neg_final_index = neg.states_insert(states.next_final());
                 let mut negated_intervals = interval_map![Interval::all() => true];
@@ -98,7 +92,7 @@ impl Re {
                 neg.set_final(neg_final_index);
                 neg
             },
-            Pattern::Alternation { res } => {
+            Expression::Alternation { res } => {
                 let mut alt = Enfa::new(states.next_initial());
                 let alt_final_index = alt.states_insert(states.next_final());
                 for re in res {
@@ -114,7 +108,7 @@ impl Re {
                 alt.set_final(alt_final_index);
                 alt
             },
-            Pattern::Concatenation { res } => {
+            Expression::Concatenation { res } => {
                 let mut con = Enfa::new(states.next_initial());
                 let con_final_index = con.states_insert(states.next_final());
                 let mut prev_re_final_indices = set![con.initial_index()];
@@ -133,7 +127,7 @@ impl Re {
                 con.set_final(con_final_index);
                 con
             },
-            Pattern::Repetition { re } => {
+            Expression::Repetition { re } => {
                 let mut rep = Enfa::new(states.next_initial());
                 let rep_final_index = rep.states_insert(states.next_final());
                 let re = re.as_enfa(states.disable_final());
@@ -150,6 +144,10 @@ impl Re {
                 rep
             },
         }
+    }
+
+    pub fn from_expression(expression: Expression) -> Re {
+        Re { expression, dfa: None }
     }
 }
 
@@ -177,7 +175,7 @@ macro_rules! sym {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from($crate::re::Pattern::SymbolSet { intervals: temp_vec })
+        $crate::re::Re::from_expression($crate::re::Expression::SymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -187,7 +185,7 @@ macro_rules! neg {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from($crate::re::Pattern::NegatedSymbolSet { intervals: temp_vec })
+        $crate::re::Re::from_expression($crate::re::Expression::NegatedSymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -197,7 +195,7 @@ macro_rules! alt {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from($crate::re::Pattern::Alternation { res: temp_vec })
+        $crate::re::Re::from_expression($crate::re::Expression::Alternation { res: temp_vec })
     }}
 }
 
@@ -207,14 +205,14 @@ macro_rules! con {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from($crate::re::Pattern::Concatenation { res: temp_vec })
+        $crate::re::Re::from_expression($crate::re::Expression::Concatenation { res: temp_vec })
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr) => {{
-        $crate::re::Re::from($crate::re::Pattern::Repetition { re: Box::new($x) })
+        $crate::re::Re::from_expression($crate::re::Expression::Repetition { re: Box::new($x) })
     }}
 }
 
