@@ -276,6 +276,13 @@ macro_rules! rng { // range
     }}
 }
 
+#[macro_export]
+macro_rules! all {
+    () => {{
+        interval_map::Interval::all()
+    }}
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
