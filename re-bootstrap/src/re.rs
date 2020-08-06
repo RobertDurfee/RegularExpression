@@ -35,8 +35,8 @@ pub struct Re {
 }
 
 impl Re {
-    pub fn new(_pattern: &str) -> Re {
-        panic!("Not implemented")
+    pub fn new(expression: Expression) -> Re {
+        Re { expression, dfa: None }
     }
 
     pub fn compile(&mut self) {
@@ -174,10 +174,6 @@ impl Re {
             },
         }
     }
-
-    pub fn from_expression(expression: Expression) -> Re {
-        Re { expression, dfa: None }
-    }
 }
 
 impl From<&Re> for Enfa<u32, u32> {
@@ -204,7 +200,7 @@ macro_rules! sym {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from_expression($crate::re::Expression::SymbolSet { intervals: temp_vec })
+        $crate::re::Re::new($crate::re::Expression::SymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -214,7 +210,7 @@ macro_rules! neg {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from_expression($crate::re::Expression::NegatedSymbolSet { intervals: temp_vec })
+        $crate::re::Re::new($crate::re::Expression::NegatedSymbolSet { intervals: temp_vec })
     }}
 }
 
@@ -224,7 +220,7 @@ macro_rules! alt {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from_expression($crate::re::Expression::Alternation { res: temp_vec })
+        $crate::re::Re::new($crate::re::Expression::Alternation { res: temp_vec })
     }}
 }
 
@@ -234,35 +230,35 @@ macro_rules! con {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::from_expression($crate::re::Expression::Concatenation { res: temp_vec })
+        $crate::re::Re::new($crate::re::Expression::Concatenation { res: temp_vec })
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr, $y:expr, $z:expr) => {{
-        $crate::re::Re::from_expression($crate::re::Expression::Repetition { re: Box::new($x), min: $y, max: $z })
+        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: $y, max: $z })
     }}
 }
 
 #[macro_export]
 macro_rules! ast { // asterisk
     ($x:expr) => {{
-        $crate::re::Re::from_expression($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: None })
+        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: None })
     }}
 }
 
 #[macro_export]
 macro_rules! plu { // plus sign
     ($x:expr) => {{
-        $crate::re::Re::from_expression($crate::re::Expression::Repetition { re: Box::new($x), min: Some(1), max: None })
+        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: Some(1), max: None })
     }}
 }
 
 #[macro_export]
 macro_rules! que { // question mark
     ($x:expr) => {{
-        $crate::re::Re::from_expression($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: Some(1) })
+        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: Some(1) })
     }}
 }
 
