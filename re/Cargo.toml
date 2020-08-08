@@ -10,6 +10,6 @@ edition = "2018"
 lazy_static = "1.4.0"
 interval-map = { git = "https://github.com/RobertDurfee/IntervalMap" }
 finite-automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }
-re-bootstrap = { path = "../re-bootstrap" }
+re-bootstrap = { git = "https://github.com/RobertDurfee/RegularExpression" }
 lexer-bootstrap = { git = "https://github.com/RobertDurfee/LexerGenerator" }
 parser-bootstrap = { git = "https://github.com/RobertDurfee/ParserGenerator" }
