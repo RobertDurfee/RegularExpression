@@ -26,6 +26,7 @@ use parser_bootstrap::{
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum TokenKind {
+    FULL_STOP,
     VERTICAL_BAR,
     ASTERISK,
     PLUS_SIGN,
@@ -69,81 +70,89 @@ pub enum Nonterminal {
 use Nonterminal::*;
 
 pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expression {
-    if let ParseTree::Nonterminal { nonterminal, children, .. } = parse_tree {
-        match nonterminal {
-            // Root ::= Alternation;
-            Root => {
-                as_expression(&children[0])
-            },
-            // Alternation :;= Concatenation (VERTICAL_BAR Concatenation)*;
-            Alternation => {
-                if children.len() > 1 {
-                    let mut expressions = Vec::new();
-                    let mut skip = false;
-                    for child in children {
-                        if !skip {
+    match parse_tree {
+        ParseTree::Nonterminal { nonterminal, children, .. } => {
+            match nonterminal {
+                // Root ::= Alternation;
+                Root => {
+                    as_expression(&children[0])
+                },
+                // Alternation :;= Concatenation (VERTICAL_BAR Concatenation)*;
+                Alternation => {
+                    if children.len() > 1 {
+                        let mut expressions = Vec::new();
+                        let mut skip = false;
+                        for child in children {
+                            if !skip {
+                                expressions.push(as_expression(child));
+                            }
+                            skip = !skip;
+                        }
+                        Expression::Alternation { expressions }
+                    } else {
+                        as_expression(&children[0])
+                    }
+                },
+                // Concatenation ::= Repetition+;
+                Concatenation => {
+                    if children.len() > 1 {
+                        let mut expressions = Vec::new();
+                        for child in children {
                             expressions.push(as_expression(child));
                         }
-                        skip = !skip;
+                        Expression::Concatenation { expressions }
+                    } else {
+                        as_expression(&children[0])
                     }
-                    Expression::Alternation { expressions }
-                } else {
-                    as_expression(&children[0])
-                }
-            },
-            // Concatenation ::= Repetition+;
-            Concatenation => {
-                if children.len() > 1 {
-                    let mut expressions = Vec::new();
-                    for child in children {
-                        expressions.push(as_expression(child));
+                },
+                // Repetition ::= Atom (ASTERISK | PLUS_SIGN | QUESTION_MARK | RepetitionExact | RepetitionMinimum | RepetitionMaximum | RepetitionRange)?;
+                Repetition => {
+                    if children.len() > 1 {
+                        let expression = Box::new(as_expression(&children[0]));
+                        let (min, max) = as_range(&children[1]);
+                        Expression::Repetition { expression, min, max }
+                    } else {
+                        as_expression(&children[0])
                     }
-                    Expression::Concatenation { expressions }
-                } else {
-                    as_expression(&children[0])
-                }
-            },
-            // Repetition ::= Atom (ASTERISK | PLUS_SIGN | QUESTION_MARK | RepetitionExact | RepetitionMinimum | RepetitionMaximum | RepetitionRange)?;
-            Repetition => {
-                if children.len() > 1 {
-                    let expression = Box::new(as_expression(&children[0]));
-                    let (min, max) = as_range(&children[1]);
-                    Expression::Repetition { expression, min, max }
-                } else {
-                    as_expression(&children[0])
-                }
-            },
-            // Atom ::= SymbolSet | NegatedSymbolSet | Literal | LEFT_PARENTHESIS Alternation RIGHT_PARENTHESIS;
-            Atom => {
-                if children.len() > 1 {
-                    as_expression(&children[1])
-                } else {
-                    as_expression(&children[0])
-                }
-            },
-            // SymbolSet ::= LEFT_SQUARE_BRACKET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
-            SymbolSet => {
-                let mut intervals = Vec::new();
-                for i in 1..children.len()-1 {
-                    intervals.push(as_interval(&children[i]))
-                }
-                Expression::SymbolSet { intervals }
-            },
-            // NegatedSymbolSet ::= LEFT_SQUARE_BRACKET CARET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
-            NegatedSymbolSet => {
-                let mut intervals = Vec::new();
-                for i in 2..children.len()-1 {
-                    intervals.push(as_interval(&children[i]))
-                }
-                Expression::NegatedSymbolSet { intervals }
-            },
-            // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
-            Literal => {
-                Expression::SymbolSet { intervals: vec![Interval::singleton(as_literal(&children[0]))] }
-            },
-            _ => panic!("not expression")
-        }
-    } else { panic!("not expression") }
+                },
+                // Atom ::= SymbolSet | NegatedSymbolSet | Literal | FULL_STOP | LEFT_PARENTHESIS Alternation RIGHT_PARENTHESIS;
+                Atom => {
+                    if children.len() > 1 {
+                        as_expression(&children[1])
+                    } else {
+                        as_expression(&children[0])
+                    }
+                },
+                // SymbolSet ::= LEFT_SQUARE_BRACKET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
+                SymbolSet => {
+                    let mut intervals = Vec::new();
+                    for i in 1..children.len()-1 {
+                        intervals.push(as_interval(&children[i]))
+                    }
+                    Expression::SymbolSet { intervals }
+                },
+                // NegatedSymbolSet ::= LEFT_SQUARE_BRACKET CARET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
+                NegatedSymbolSet => {
+                    let mut intervals = Vec::new();
+                    for i in 2..children.len()-1 {
+                        intervals.push(as_interval(&children[i]))
+                    }
+                    Expression::NegatedSymbolSet { intervals }
+                },
+                // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
+                Literal => {
+                    Expression::SymbolSet { intervals: vec![Interval::singleton(as_literal(&children[0]))] }
+                },
+                _ => panic!("not expression")
+            }
+        },
+        ParseTree::Token { token } => {
+            if let FULL_STOP = token.kind() {
+                Expression::SymbolSet { intervals: vec![Interval::all()] }
+            } else { panic!("not expression") }
+        },
+        _ => panic!("not expression")
+    }
 }
 
 fn as_range(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> (Option<u32>, Option<u32>) {
@@ -242,11 +251,11 @@ fn as_literal(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
                     _ => panic!("not literal")
                 }
             },
-            // /[^\/\|\*\+\?\(\)\[\]\{\}\^\-,0-9\n\r\t\\]/ => UNESCAPED;
+            // /[^\.\/\|\*\+\?\(\)\[\]\{\}\^\-,0-9\n\r\t\\]/ => UNESCAPED;
             UNESCAPED => {
                 u32::from(token.text().chars().next().expect("not literal"))
             },
-            // /\\[\/\|\*\+\?\(\)\[\]\{\}\^\-\\]/ => ESCAPED;
+            // /\\[\.\/\|\*\+\?\(\)\[\]\{\}\^\-\\]/ => ESCAPED;
             ESCAPED => {
                 let mut chars = token.text().chars();
                 chars.next().expect("not literal"); // consume /\\/
@@ -310,6 +319,7 @@ fn as_digit(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
 }
 
 lazy_static! {
+    // /\./ => FULL_STOP;
     // /\|/ => VERTICAL_BAR;
     // /\*/ => ASTERISK;
     // /\+/ => PLUS_SIGN;
@@ -325,12 +335,13 @@ lazy_static! {
     // /,/ => COMMA;
     // /[0-9]/ => DIGIT;
     // /\\[nrt]/ => CONTROL;
-    // /[^\/\|\*\+\?\(\)\[\]\{\}\^\-,0-9\n\r\t\\]/ => UNESCAPED;
-    // /\\[\/\|\*\+\?\(\)\[\]\{\}\^\-\\]/ => ESCAPED;
+    // /[^\.\/\|\*\+\?\(\)\[\]\{\}\^\-,0-9\n\r\t\\]/ => UNESCAPED;
+    // /\\[\.\/\|\*\+\?\(\)\[\]\{\}\^\-\\]/ => ESCAPED;
     // /\\[0-7]{1,3}/ => OCTAL;
     // /\\x[0-9a-fA-F]{1,2}/ => HEXADECIMAL;
     // /\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/ => UNICODE;
     pub(crate) static ref LEXER_PRODUCTIONS: Map<re_bootstrap::Expression, Option<TokenKind>> = map![
+        rsym![rsgl!('.')] => Some(FULL_STOP),
         rsym![rsgl!('|')] => Some(VERTICAL_BAR),
         rsym![rsgl!('*')] => Some(ASTERISK),
         rsym![rsgl!('+')] => Some(PLUS_SIGN),
@@ -354,6 +365,7 @@ lazy_static! {
             ]
         ] => Some(CONTROL),
         rneg![
+            rsgl!('.'),
             rsgl!('/'),
             rsgl!('|'),
             rsgl!('*'),
@@ -377,6 +389,7 @@ lazy_static! {
         rcon![
             rsym![rsgl!('\\')],
             rsym![
+                rsgl!('.'),
                 rsgl!('/'),
                 rsgl!('|'),
                 rsgl!('*'),
@@ -433,7 +446,7 @@ lazy_static! {
     // Alternation ::= Concatenation (VERTICAL_BAR Concatenation)*;
     // Concatenation ::= Repetition+;
     // Repetition ::= Atom (ASTERISK | PLUS_SIGN | QUESTION_MARK | RepetitionExact | RepetitionMinimum | RepetitionMaximum | RepetitionRange)?;
-    // Atom ::= SymbolSet | NegatedSymbolSet | Literal | LEFT_PARENTHESIS Alternation RIGHT_PARENTHESIS;
+    // Atom ::= SymbolSet | NegatedSymbolSet | Literal | FULL_STOP | LEFT_PARENTHESIS Alternation RIGHT_PARENTHESIS;
     // SymbolSet ::= LEFT_SQUARE_BRACKET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
     // NegatedSymbolSet ::= LEFT_SQUARE_BRACKET CARET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
     // SymbolSetRange ::= Literal HYPHEN Literal;
@@ -469,6 +482,7 @@ lazy_static! {
             pnon!(SymbolSet),
             pnon!(NegatedSymbolSet),
             pnon!(Literal),
+            ptok!(FULL_STOP),
             pcon![
                 ptok!(LEFT_PARENTHESIS),
                 pnon!(Alternation),

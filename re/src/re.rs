@@ -618,6 +618,13 @@ mod tests {
         assert!(re.is_match("ABBAAA"));
     }
 
+    #[test]
+    fn test_match_all() {
+        let mut re = Re::new(r".");
+        re.compile();
+        assert!(re.is_match("A"));
+    }
+
     struct ExpectedEnfa<S, T> {
         initial: S,
         transitions: Set<(S, Interval<T>, S)>,
