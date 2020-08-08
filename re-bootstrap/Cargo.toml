@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 num = "0.3"
-interval-map = { path = "../../IntervalMap" }
-finite-automata = { path = "../../FiniteAutomata" }
+interval-map = { git = "https://github.com/RobertDurfee/IntervalMap" }
+finite-automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }

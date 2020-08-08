@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.4.0"
-interval-map = { path = "../../IntervalMap" }
-finite-automata = { path = "../../FiniteAutomata" }
+interval-map = { git = "https://github.com/RobertDurfee/IntervalMap" }
+finite-automata = { git = "https://github.com/RobertDurfee/FiniteAutomata" }
 re-bootstrap = { path = "../re-bootstrap" }
-lexer-bootstrap = { path = "../../LexerGenerator/lexer-bootstrap" }
-parser-bootstrap = { path = "../../ParserGenerator/parser-bootstrap" }
+lexer-bootstrap = { git = "https://github.com/RobertDurfee/LexerGenerator" }
+parser-bootstrap = { git = "https://github.com/RobertDurfee/ParserGenerator" }
