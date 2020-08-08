@@ -4,38 +4,40 @@ use finite_automata::{
     Nfa,
     Dfa,
 };
-use re_bootstrap::{
-    Re as ReBootstrap,
+use re_bootstrap::Re as ReBootstrap;
+use crate::{
+    grammar::{
+        LEXER_PRODUCTIONS,
+        PARSER_PRODUCTIONS,
+        Nonterminal,
+        as_expression,
+    },
     Expression,
-};
-use crate::grammar::{
-    LEXER_PRODUCTIONS,
-    PARSER_PRODUCTIONS,
-    Nonterminal,
-    as_expression,
 };
 use lexer_bootstrap::Lexer;
 use parser_bootstrap::Parser;
+
+type Result<T> = std::result::Result<T, &'static str>;
 
 pub struct Re {
     re: ReBootstrap,
 }
 
 impl Re {
-    pub fn new(expression: &str) -> Re {
+    pub fn new(expression: &str) -> Result<Re> {
         let mut lexer = Lexer::new(LEXER_PRODUCTIONS.clone()); lexer.compile();
         let parser = Parser::new(PARSER_PRODUCTIONS.clone(), Nonterminal::Root);
-        let tokens = lexer.lex(expression).expect("lexer error");
-        let parse_tree = parser.parse(&tokens).expect("parser error");
-        let expression = as_expression(&parse_tree);
-        Re { re: ReBootstrap::new(expression) }
+        let tokens = lexer.lex(expression)?;
+        let parse_tree = parser.parse(&tokens)?;
+        let expression = as_expression(&parse_tree)?;
+        Ok(Re { re: ReBootstrap::new(expression) })
     }
 
     pub fn compile(&mut self) {
         self.re.compile()
     }
 
-    pub fn is_match(&self, text: &str) -> bool {
+    pub fn is_match(&self, text: &str) -> Result<bool> {
         self.re.is_match(text)
     }
 
@@ -84,11 +86,14 @@ mod tests {
         Enfa,
         Dfa,
     };
-    use re_bootstrap::set;
-    use crate::Re;
+    use crate::{
+        Re,
+        set,
+    };
+    use super::Result;
 
     #[test]
-    fn test_enfa_epsilon() {
+    fn test_enfa_epsilon() -> Result<()> {
          let expected = ExpectedEnfa::<_, u32> {
             initial: 0,
             transitions: set![
@@ -96,12 +101,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"[]"));
+        let actual = Enfa::from(&Re::new(r"[]")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_symbol() {
+    fn test_enfa_symbol() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -109,12 +115,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"A"));
+        let actual = Enfa::from(&Re::new(r"A")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_negated_symbol() {
+    fn test_enfa_negated_symbol() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -123,12 +130,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"[^A]"));
+        let actual = Enfa::from(&Re::new(r"[^A]")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_symbol_set() {
+    fn test_enfa_symbol_set() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -137,12 +145,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"[A-Za-z]"));
+        let actual = Enfa::from(&Re::new(r"[A-Za-z]")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_negated_symbol_set() {
+    fn test_enfa_negated_symbol_set() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -152,12 +161,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"[^A-Za-z]"));
+        let actual = Enfa::from(&Re::new(r"[^A-Za-z]")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_alternation() {
+    fn test_enfa_alternation() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -170,12 +180,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new("A|B"));
+        let actual = Enfa::from(&Re::new("A|B")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_concatenation() {
+    fn test_enfa_concatenation() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -187,12 +198,13 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"AB"));
+        let actual = Enfa::from(&Re::new(r"AB")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_enfa_repetition() {
+    fn test_enfa_repetition() -> Result<()> {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
@@ -204,23 +216,25 @@ mod tests {
             ],
             finals: set![1]
         };
-        let actual = Enfa::from(&Re::new(r"A*"));
+        let actual = Enfa::from(&Re::new(r"A*")?);
         assert_enfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_epsilon() {
+    fn test_dfa_epsilon() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0, 1],
             transitions: set![],
             finals: set![set![0, 1]]
         };
-        let actual = Dfa::from(&Re::new(r"[]"));
+        let actual = Dfa::from(&Re::new(r"[]")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_symbol() {
+    fn test_dfa_symbol() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
@@ -228,12 +242,13 @@ mod tests {
             ],
             finals: set![set![1]]
         };
-        let actual = Dfa::from(&Re::new(r"A"));
+        let actual = Dfa::from(&Re::new(r"A")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_negated_symbol() {
+    fn test_dfa_negated_symbol() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
@@ -242,12 +257,13 @@ mod tests {
             ],
             finals: set![set![1]]
         };
-        let actual = Dfa::from(&Re::new(r"[^A]"));
+        let actual = Dfa::from(&Re::new(r"[^A]")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_symbol_set() {
+    fn test_dfa_symbol_set() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
@@ -256,12 +272,13 @@ mod tests {
             ],
             finals: set![set![1]]
         };
-        let actual = Dfa::from(&Re::new(r"[A-Za-z]"));
+        let actual = Dfa::from(&Re::new(r"[A-Za-z]")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_negated_symbol_set() {
+    fn test_dfa_negated_symbol_set() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
@@ -271,12 +288,13 @@ mod tests {
             ],
             finals: set![set![1]]
         };
-        let actual = Dfa::from(&Re::new(r"[^A-Za-z]"));
+        let actual = Dfa::from(&Re::new(r"[^A-Za-z]")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_alternation() {
+    fn test_dfa_alternation() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0, 2, 4],
             transitions: set![
@@ -285,12 +303,13 @@ mod tests {
             ],
             finals: set![set![1, 3], set![1, 5]]
         };
-        let actual = Dfa::from(&Re::new(r"A|B"));
+        let actual = Dfa::from(&Re::new(r"A|B")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_concatenation() {
+    fn test_dfa_concatenation() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0, 2],
             transitions: set![
@@ -299,12 +318,13 @@ mod tests {
             ],
             finals: set![set![1, 5]]
         };
-        let actual = Dfa::from(&Re::new(r"AB"));
+        let actual = Dfa::from(&Re::new(r"AB")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_dfa_repetition() {
+    fn test_dfa_repetition() -> Result<()> {
         let expected = ExpectedDfa {
             initial: set![0, 1, 2],
             transitions: set![
@@ -313,316 +333,361 @@ mod tests {
             ],
             finals: set![set![0, 1, 2], set![1, 2, 3]]
         };
-        let actual = Dfa::from(&Re::new(r"A*"));
+        let actual = Dfa::from(&Re::new(r"A*")?);
         assert_dfa_eq(expected, actual);
+        Ok(())
     }
 
     #[test]
-    fn test_match_epsilon_1() {
-        let mut re = Re::new(r"[]");
+    fn test_match_epsilon_1() -> Result<()> {
+        let mut re = Re::new(r"[]")?;
         re.compile();
-        assert!(re.is_match(""));
+        assert!(re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_epsilon_2() {
-        let mut re = Re::new(r"[]");
+    fn test_match_epsilon_2() -> Result<()> {
+        let mut re = Re::new(r"[]")?;
         re.compile();
-        assert!(!re.is_match("A"));
+        assert!(!re.is_match("A")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_symbol_1() {
-        let mut re = Re::new(r"A");
+    fn test_match_symbol_1() -> Result<()> {
+        let mut re = Re::new(r"A")?;
         re.compile();
-        assert!(re.is_match("A"));
+        assert!(re.is_match("A")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_symbol_2() {
-        let mut re = Re::new(r"A");
+    fn test_match_symbol_2() -> Result<()> {
+        let mut re = Re::new(r"A")?;
         re.compile();
-        assert!(!re.is_match("B"));
+        assert!(!re.is_match("B")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_negated_symbol_1() {
-        let mut re = Re::new(r"[^A]");
+    fn test_match_negated_symbol_1() -> Result<()> {
+        let mut re = Re::new(r"[^A]")?;
         re.compile();
-        assert!(re.is_match("B"));
+        assert!(re.is_match("B")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_negated_symbol_2() {
-        let mut re = Re::new(r"[^A]");
+    fn test_match_negated_symbol_2() -> Result<()> {
+        let mut re = Re::new(r"[^A]")?;
         re.compile();
-        assert!(!re.is_match("A"));
+        assert!(!re.is_match("A")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_symbol_set_1() {
-        let mut re = Re::new(r"[A-Za-z]");
+    fn test_match_symbol_set_1() -> Result<()> {
+        let mut re = Re::new(r"[A-Za-z]")?;
         re.compile();
-        assert!(re.is_match("D"));
+        assert!(re.is_match("D")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_symbol_set_2() {
-        let mut re = Re::new(r"[A-Za-z]");
+    fn test_match_symbol_set_2() -> Result<()> {
+        let mut re = Re::new(r"[A-Za-z]")?;
         re.compile();
-        assert!(!re.is_match("_"));
+        assert!(!re.is_match("_")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_negated_symbol_set_1() {
-        let mut re = Re::new(r"[^A-Za-z]");
+    fn test_match_negated_symbol_set_1() -> Result<()> {
+        let mut re = Re::new(r"[^A-Za-z]")?;
         re.compile();
-        assert!(re.is_match("_"));
+        assert!(re.is_match("_")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_negated_symbol_set_2() {
-        let mut re = Re::new(r"[^A-Za-z]");
+    fn test_match_negated_symbol_set_2() -> Result<()> {
+        let mut re = Re::new(r"[^A-Za-z]")?;
         re.compile();
-        assert!(!re.is_match("D"));
+        assert!(!re.is_match("D")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_alternation_1() {
-        let mut re = Re::new(r"A|B");
+    fn test_match_alternation_1() -> Result<()> {
+        let mut re = Re::new(r"A|B")?;
         re.compile();
-        assert!(re.is_match("A"));
+        assert!(re.is_match("A")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_alternation_2() {
-        let mut re = Re::new(r"A|B");
+    fn test_match_alternation_2() -> Result<()> {
+        let mut re = Re::new(r"A|B")?;
         re.compile();
-        assert!(re.is_match("B"));
+        assert!(re.is_match("B")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_alternation_3() {
-        let mut re = Re::new(r"A|B");
+    fn test_match_alternation_3() -> Result<()> {
+        let mut re = Re::new(r"A|B")?;
         re.compile();
-        assert!(!re.is_match("C"));
+        assert!(!re.is_match("C")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_concatenation_1() {
-        let mut re = Re::new(r"AB");
+    fn test_match_concatenation_1() -> Result<()> {
+        let mut re = Re::new(r"AB")?;
         re.compile();
-        assert!(re.is_match("AB"));
+        assert!(re.is_match("AB")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_concatenation_2() {
-        let mut re = Re::new(r"AB");
+    fn test_match_concatenation_2() -> Result<()> {
+        let mut re = Re::new(r"AB")?;
         re.compile();
-        assert!(!re.is_match("AA"));
+        assert!(!re.is_match("AA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_1() {
-        let mut re = Re::new(r"A*");
+    fn test_match_repetition_1() -> Result<()> {
+        let mut re = Re::new(r"A*")?;
         re.compile();
-        assert!(re.is_match("AAAAAAAAA"));
+        assert!(re.is_match("AAAAAAAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_2() {
-        let mut re = Re::new(r"A*");
+    fn test_match_repetition_2() -> Result<()> {
+        let mut re = Re::new(r"A*")?;
         re.compile();
-        assert!(!re.is_match("AAAABAAAA"));
+        assert!(!re.is_match("AAAABAAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_3() {
-        let mut re = Re::new(r"A*");
+    fn test_match_repetition_3() -> Result<()> {
+        let mut re = Re::new(r"A*")?;
         re.compile();
-        assert!(re.is_match(""));
+        assert!(re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_4() {
-        let mut re = Re::new(r"A+");
+    fn test_match_repetition_4() -> Result<()> {
+        let mut re = Re::new(r"A+")?;
         re.compile();
-        assert!(re.is_match("AAAAAAAAAA"));
+        assert!(re.is_match("AAAAAAAAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_5() {
-        let mut re = Re::new(r"A+");
+    fn test_match_repetition_5() -> Result<()> {
+        let mut re = Re::new(r"A+")?;
         re.compile();
-        assert!(!re.is_match("AAAABAAAAA"));
+        assert!(!re.is_match("AAAABAAAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_6() {
-        let mut re = Re::new(r"A+");
+    fn test_match_repetition_6() -> Result<()> {
+        let mut re = Re::new(r"A+")?;
         re.compile();
-        assert!(!re.is_match(""));
+        assert!(!re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_7() {
-        let mut re = Re::new(r"A?");
+    fn test_match_repetition_7() -> Result<()> {
+        let mut re = Re::new(r"A?")?;
         re.compile();
-        assert!(re.is_match("A"));
+        assert!(re.is_match("A")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_8() {
-        let mut re = Re::new(r"A?");
+    fn test_match_repetition_8() -> Result<()> {
+        let mut re = Re::new(r"A?")?;
         re.compile();
-        assert!(!re.is_match("B"));
+        assert!(!re.is_match("B")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_9() {
-        let mut re = Re::new(r"A?");
+    fn test_match_repetition_9() -> Result<()> {
+        let mut re = Re::new(r"A?")?;
         re.compile();
-        assert!(re.is_match(""));
+        assert!(re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_10() {
-        let mut re = Re::new(r"A{,3}");
+    fn test_match_repetition_10() -> Result<()> {
+        let mut re = Re::new(r"A{,3}")?;
         re.compile();
-        assert!(re.is_match(""));
+        assert!(re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_11() {
-        let mut re = Re::new(r"A{,3}");
+    fn test_match_repetition_11() -> Result<()> {
+        let mut re = Re::new(r"A{,3}")?;
         re.compile();
-        assert!(re.is_match("AA"));
+        assert!(re.is_match("AA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_12() {
-        let mut re = Re::new(r"A{,3}");
+    fn test_match_repetition_12() -> Result<()> {
+        let mut re = Re::new(r"A{,3}")?;
         re.compile();
-        assert!(re.is_match("AAA"));
+        assert!(re.is_match("AAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_13() {
-        let mut re = Re::new(r"A{,3}");
+    fn test_match_repetition_13() -> Result<()> {
+        let mut re = Re::new(r"A{,3}")?;
         re.compile();
-        assert!(!re.is_match("AAAA"));
+        assert!(!re.is_match("AAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_14() {
-        let mut re = Re::new(r"A{3,}");
+    fn test_match_repetition_14() -> Result<()> {
+        let mut re = Re::new(r"A{3,}")?;
         re.compile();
-        assert!(!re.is_match(""));
+        assert!(!re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_15() {
-        let mut re = Re::new(r"A{3,}");
+    fn test_match_repetition_15() -> Result<()> {
+        let mut re = Re::new(r"A{3,}")?;
         re.compile();
-        assert!(!re.is_match("AA"));
+        assert!(!re.is_match("AA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_16() {
-        let mut re = Re::new(r"A{3,}");
+    fn test_match_repetition_16() -> Result<()> {
+        let mut re = Re::new(r"A{3,}")?;
         re.compile();
-        assert!(re.is_match("AAA"));
+        assert!(re.is_match("AAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_17() {
-        let mut re = Re::new(r"A{3,}");
+    fn test_match_repetition_17() -> Result<()> {
+        let mut re = Re::new(r"A{3,}")?;
         re.compile();
-        assert!(re.is_match("AAAA"));
+        assert!(re.is_match("AAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_18() {
-        let mut re = Re::new(r"A{3}");
+    fn test_match_repetition_18() -> Result<()> {
+        let mut re = Re::new(r"A{3}")?;
         re.compile();
-        assert!(!re.is_match(""));
+        assert!(!re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_19() {
-        let mut re = Re::new(r"A{3}");
+    fn test_match_repetition_19() -> Result<()> {
+        let mut re = Re::new(r"A{3}")?;
         re.compile();
-        assert!(!re.is_match("AA"));
+        assert!(!re.is_match("AA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_20() {
-        let mut re = Re::new(r"A{3}");
+    fn test_match_repetition_20() -> Result<()> {
+        let mut re = Re::new(r"A{3}")?;
         re.compile();
-        assert!(re.is_match("AAA"));
+        assert!(re.is_match("AAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_21() {
-        let mut re = Re::new(r"A{3}");
+    fn test_match_repetition_21() -> Result<()> {
+        let mut re = Re::new(r"A{3}")?;
         re.compile();
-        assert!(!re.is_match("AAAA"));
+        assert!(!re.is_match("AAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_22() {
-        let mut re = Re::new(r"A{2,3}");
+    fn test_match_repetition_22() -> Result<()> {
+        let mut re = Re::new(r"A{2,3}")?;
         re.compile();
-        assert!(!re.is_match(""));
+        assert!(!re.is_match("")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_23() {
-        let mut re = Re::new(r"A{2,3}");
+    fn test_match_repetition_23() -> Result<()> {
+        let mut re = Re::new(r"A{2,3}")?;
         re.compile();
-        assert!(re.is_match("AA"));
+        assert!(re.is_match("AA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_24() {
-        let mut re = Re::new(r"A{2,3}");
+    fn test_match_repetition_24() -> Result<()> {
+        let mut re = Re::new(r"A{2,3}")?;
         re.compile();
-        assert!(re.is_match("AAA"));
+        assert!(re.is_match("AAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_repetition_25() {
-        let mut re = Re::new(r"A{2,3}");
+    fn test_match_repetition_25() -> Result<()> {
+        let mut re = Re::new(r"A{2,3}")?;
         re.compile();
-        assert!(!re.is_match("AAAA"));
+        assert!(!re.is_match("AAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_complex_1() {
-        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*");
+    fn test_match_complex_1() -> Result<()> {
+        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*")?;
         re.compile();
-        assert!(re.is_match("ABBBA"));
+        assert!(re.is_match("ABBBA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_complex_2() {
-        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*");
+    fn test_match_complex_2() -> Result<()> {
+        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*")?;
         re.compile();
-        assert!(!re.is_match("ABBA"));
+        assert!(!re.is_match("ABBA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_complex_3() {
-        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*");
+    fn test_match_complex_3() -> Result<()> {
+        let mut re = Re::new(r"(A|B)*(AAA|BBB)(A|B)*")?;
         re.compile();
-        assert!(re.is_match("ABBAAA"));
+        assert!(re.is_match("ABBAAA")?);
+        Ok(())
     }
 
     #[test]
-    fn test_match_all() {
-        let mut re = Re::new(r".");
+    fn test_match_all() -> Result<()> {
+        let mut re = Re::new(r".")?;
         re.compile();
-        assert!(re.is_match("A"));
+        assert!(re.is_match("A")?);
+        Ok(())
     }
 
     struct ExpectedEnfa<S, T> {

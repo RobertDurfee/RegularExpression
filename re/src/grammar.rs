@@ -1,7 +1,7 @@
 use std::collections::BTreeMap as Map;
 use lazy_static::lazy_static;
 use interval_map::Interval;
-use re_bootstrap::{
+use crate::{
     sym as rsym,
     neg as rneg,
     alt as ralt,
@@ -22,6 +22,8 @@ use parser_bootstrap::{
     que as pque,
     ParseTree,
 };
+
+type Result<T> = std::result::Result<T, &'static str>;
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -69,7 +71,7 @@ pub enum Nonterminal {
 }
 use Nonterminal::*;
 
-pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expression {
+pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<Expression> {
     match parse_tree {
         ParseTree::Nonterminal { nonterminal, children, .. } => {
             match nonterminal {
@@ -84,11 +86,11 @@ pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expressi
                         let mut skip = false;
                         for child in children {
                             if !skip {
-                                expressions.push(as_expression(child));
+                                expressions.push(as_expression(child)?);
                             }
                             skip = !skip;
                         }
-                        Expression::Alternation { expressions }
+                        Ok(Expression::Alternation { expressions })
                     } else {
                         as_expression(&children[0])
                     }
@@ -98,9 +100,9 @@ pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expressi
                     if children.len() > 1 {
                         let mut expressions = Vec::new();
                         for child in children {
-                            expressions.push(as_expression(child));
+                            expressions.push(as_expression(child)?);
                         }
-                        Expression::Concatenation { expressions }
+                        Ok(Expression::Concatenation { expressions })
                     } else {
                         as_expression(&children[0])
                     }
@@ -108,9 +110,9 @@ pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expressi
                 // Repetition ::= Atom (ASTERISK | PLUS_SIGN | QUESTION_MARK | RepetitionExact | RepetitionMinimum | RepetitionMaximum | RepetitionRange)?;
                 Repetition => {
                     if children.len() > 1 {
-                        let expression = Box::new(as_expression(&children[0]));
-                        let (min, max) = as_range(&children[1]);
-                        Expression::Repetition { expression, min, max }
+                        let expression = Box::new(as_expression(&children[0])?);
+                        let (min, max) = as_range(&children[1])?;
+                        Ok(Expression::Repetition { expression, min, max })
                     } else {
                         as_expression(&children[0])
                     }
@@ -127,195 +129,213 @@ pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Expressi
                 SymbolSet => {
                     let mut intervals = Vec::new();
                     for i in 1..children.len()-1 {
-                        intervals.push(as_interval(&children[i]))
+                        intervals.push(as_interval(&children[i])?)
                     }
-                    Expression::SymbolSet { intervals }
+                    Ok(Expression::SymbolSet { intervals })
                 },
                 // NegatedSymbolSet ::= LEFT_SQUARE_BRACKET CARET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
                 NegatedSymbolSet => {
                     let mut intervals = Vec::new();
                     for i in 2..children.len()-1 {
-                        intervals.push(as_interval(&children[i]))
+                        intervals.push(as_interval(&children[i])?)
                     }
-                    Expression::NegatedSymbolSet { intervals }
+                    Ok(Expression::NegatedSymbolSet { intervals })
                 },
                 // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
                 Literal => {
-                    Expression::SymbolSet { intervals: vec![Interval::singleton(as_literal(&children[0]))] }
+                    Ok(Expression::SymbolSet { intervals: vec![Interval::singleton(as_literal(&children[0])?)] })
                 },
-                _ => panic!("not expression")
+                _ => Err("not expression")
             }
         },
         ParseTree::Token { token } => {
             if let FULL_STOP = token.kind() {
-                Expression::SymbolSet { intervals: vec![Interval::all()] }
-            } else { panic!("not expression") }
+                Ok(Expression::SymbolSet { intervals: vec![Interval::all()] })
+            } else { Err("not expression") }
         },
-        _ => panic!("not expression")
+        _ => Err("not expression")
     }
 }
 
-fn as_range(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> (Option<u32>, Option<u32>) {
+fn as_range(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<(Option<u32>, Option<u32>)> {
     match parse_tree {
         ParseTree::Nonterminal { nonterminal, children, .. } => {
             match nonterminal {
                 // RepetitionExact ::= LEFT_CURLY_BRACKET Integer RIGHT_CURLY_BRACKET;
                 RepetitionExact => {
-                    let value = as_integer(&children[1]);
-                    (Some(value), Some(value))
+                    Ok((Some(as_integer(&children[1])?), Some(as_integer(&children[1])?)))
                 },
                 // RepetitionMinimum ::= LEFT_CURLY_BRACKET Integer COMMA RIGHT_CURLY_BRACKET;
                 RepetitionMinimum => {
-                    let min = as_integer(&children[1]);
-                    (Some(min), None)
+                    Ok((Some(as_integer(&children[1])?), None))
                 },
                 // RepetitionMaximum ::= LEFT_CURLY_BRACKET COMMA Integer RIGHT_CURLY_BRACKET;
                 RepetitionMaximum => {
-                    let max = as_integer(&children[2]);
-                    (None, Some(max))
+                    Ok((None, Some(as_integer(&children[2])?)))
                 },
                 // RepetitionRange ::= LEFT_CURLY_BRACKET Integer COMMA Integer RIGHT_CURLY_BRACKET;
                 RepetitionRange => {
-                    let min = as_integer(&children[1]);
-                    let max = as_integer(&children[3]);
-                    (Some(min), Some(max))
+                    Ok((Some(as_integer(&children[1])?), Some(as_integer(&children[3])?)))
                 },
-                _ => panic!("not range")
+                _ => Err("not range")
             }
         },
         ParseTree::Token { token } => {
             match token.kind() {
                 // /\*/ => ASTERISK;
                 ASTERISK => {
-                    (None, None)
+                    Ok((None, None))
                 },
                 // /\+/ => PLUS_SIGN;
                 PLUS_SIGN => {
-                    (Some(1), None)
+                    Ok((Some(1), None))
                 },
                 // /\?/ => QUESTION_MARK;
                 QUESTION_MARK => {
-                    (None, Some(1))
+                    Ok((None, Some(1)))
                 },
-                _ => panic!("not range")
+                _ => Err("not range")
             }
         },
-        _ => panic!("not range")
+        _ => Err("not range")
     }
 }
 
-fn as_interval(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Interval<u32> {
+fn as_interval(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<Interval<u32>> {
     match parse_tree {
         ParseTree::Nonterminal { nonterminal, children, .. } => {
             match nonterminal {
                 // SymbolSetRange ::= Literal HYPHEN Literal;
                 SymbolSetRange => {
-                    Interval::closed(*as_interval(&children[0]).lower(), *as_interval(&children[2]).lower())
+                    Ok(Interval::closed(*as_interval(&children[0])?.lower(), *as_interval(&children[2])?.lower()))
                 },
                 // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
                 Literal => {
-                    Interval::singleton(as_literal(&children[0]))
+                    Ok(Interval::singleton(as_literal(&children[0])?))
                 },
-                _ => panic!("not interval")
+                _ => Err("not interval")
             }
         },
-        _ => panic!("not interval")
+        _ => Err("not interval")
     }
 }
 
-fn as_literal(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
+fn as_literal(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<u32> {
     if let ParseTree::Token { token } = parse_tree {
         match token.kind() {
             // /,/ => COMMA;
             COMMA => {
-                u32::from(',')
+                Ok(u32::from(','))
             },
             // /[0-9]/ => DIGIT;
             DIGIT => {
-                u32::from(token.text().chars().next().expect("not literal"))
+                if let Some(digit) = token.text().chars().next() {
+                    Ok(u32::from(digit))
+                } else { Err("not literal") }
             },
             // /\\[nrt]/ => CONTROL;
             CONTROL => {
                 let mut chars = token.text().chars();
-                chars.next().expect("not literal"); // consume /\\/
-                match chars.next().expect("not literal") {
-                    'n' => {
-                        u32::from('\n')
+                // consume /\\/
+                if chars.next().is_none() {
+                    return Err("not literal")
+                }
+                match chars.next() {
+                    Some('n') => {
+                        Ok(u32::from('\n'))
                     },
-                    'r' => {
-                        u32::from('\r')
+                    Some('r') => {
+                        Ok(u32::from('\r'))
                     },
-                    't' => {
-                        u32::from('\t')
+                    Some('t') => {
+                        Ok(u32::from('\t'))
                     },
-                    _ => panic!("not literal")
+                    _ => Err("not literal")
                 }
             },
             // /[^\.\/\|\*\+\?\(\)\[\]\{\}\^\-,0-9\n\r\t\\]/ => UNESCAPED;
             UNESCAPED => {
-                u32::from(token.text().chars().next().expect("not literal"))
+                if let Some(unescaped) = token.text().chars().next() {
+                    Ok(u32::from(unescaped))
+                } else { Err("not literal") }
             },
             // /\\[\.\/\|\*\+\?\(\)\[\]\{\}\^\-\\]/ => ESCAPED;
             ESCAPED => {
                 let mut chars = token.text().chars();
-                chars.next().expect("not literal"); // consume /\\/
-                u32::from(chars.next().expect("not literal"))
+                // consume /\\/
+                if chars.next().is_none() { return Err("not literal") }
+                if let Some(escaped) = chars.next() {
+                    Ok(u32::from(escaped))
+                } else { Err("not literal") }
             },
             // /\\[0-7]{1,3}/ => OCTAL;
             OCTAL => {
                 let mut chars = token.text().chars();
-                chars.next().expect("not literal"); // consume /\\/
+                // consume /\\/
+                if chars.next().is_none() { return Err("not literal") }
                 let mut octal = 0;
                 while let Some(digit) = chars.next() {
-                    octal = (octal * 8) + digit.to_digit(8).expect("not literal")
+                    if let Some(digit) = digit.to_digit(8) {
+                        octal = (octal * 8) + digit;
+                    } else { return Err("not literal") }
                 }
-                octal
+                Ok(octal)
             },
             // /\\x[0-9a-fA-F]{1,2}/ => HEXADECIMAL;
             HEXADECIMAL => {
                 let mut chars = token.text().chars();
-                chars.next().expect("not literal"); // consume /\\/
-                chars.next().expect("not literal"); // consume /x/
+                // consume /\\/
+                if chars.next().is_none() { return Err("not literal") }
+                // consume /x/
+                if chars.next().is_none() { return Err("not literal") }
                 let mut hexadecimal = 0;
                 while let Some(digit) = chars.next() {
-                    hexadecimal = (hexadecimal * 16) + digit.to_digit(16).expect("not literal")
+                    if let Some(digit) = digit.to_digit(16) {
+                        hexadecimal = (hexadecimal * 16) + digit
+                    } else { return Err("not literal") }
                 }
-                hexadecimal
+                Ok(hexadecimal)
             },
             // /\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/ => UNICODE;
             UNICODE => {
                 let mut chars = token.text().chars();
-                chars.next().expect("not literal"); // consume /\\/
-                chars.next().expect("not literal"); // consume /u|U/
+                // consume /\\/
+                if chars.next().is_none() { return Err("not literal") }
+                // consume /u|U/
+                if chars.next().is_none() { return Err("not literal") }
                 let mut unicode = 0;
                 while let Some(digit) = chars.next() {
-                    unicode = (unicode * 16) + digit.to_digit(16).expect("not literal")
+                    if let Some(digit) = digit.to_digit(16) {
+                        unicode = (unicode * 16) + digit
+                    } else { return Err("not literal") }
                 }
-                unicode
+                Ok(unicode)
             },
-            _ => panic!("not literal")
+            _ => Err("not literal")
         }
-    } else { panic!("not literal") }
+    } else { Err("not literal") }
 }
 
-fn as_integer(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
+fn as_integer(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<u32> {
     if let ParseTree::Nonterminal { nonterminal, children, .. } = parse_tree {
         if let Integer = nonterminal {
             let mut integer = 0;
             for child in children {
-                integer = (integer * 10) + as_digit(child);
+                integer = (integer * 10) + as_digit(child)?;
             }
-            integer
-        } else { panic!("not integer") }
-    } else { panic!("not integer") }
+            Ok(integer)
+        } else { Err("not integer") }
+    } else { Err("not integer") }
 }
 
-fn as_digit(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
+fn as_digit(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<u32> {
     if let ParseTree::Token { token } = parse_tree {
         if let DIGIT = token.kind() {
-            token.text().parse::<u32>().expect("not digit")
-        } else { panic!("not digit") }
-    } else { panic!("not digit") }
+            if let Ok(digit) = token.text().parse::<u32>() {
+                Ok(digit)
+            } else { Err("not digit") }
+        } else { Err("not digit") }
+    } else { Err("not digit") }
 }
 
 lazy_static! {

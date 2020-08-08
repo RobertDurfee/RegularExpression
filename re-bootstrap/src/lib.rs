@@ -5,8 +5,8 @@ use num::{
 };
 
 #[macro_use]
-pub mod util;
-pub mod re;
+mod util;
+mod re;
 
 pub use crate::re::{
     Expression,
