@@ -223,7 +223,7 @@ fn as_literal(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> u32 {
             },
             // /[0-9]/ => DIGIT;
             DIGIT => {
-                token.text().parse::<u32>().expect("not literal")
+                u32::from(token.text().chars().next().expect("not literal"))
             },
             // /\\[nrt]/ => CONTROL;
             CONTROL => {
@@ -316,7 +316,7 @@ lazy_static! {
     // /\?/ => QUESTION_MARK;
     // /\(/ => LEFT_PARENTHESIS;
     // /\)/ => RIGHT_PARENTHESIS;
-    // /\[ => LEFT_SQUARE_BRACKET;
+    // /\[/ => LEFT_SQUARE_BRACKET;
     // /\]/ => RIGHT_SQUARE_BRACKET;
     // /\{/ => LEFT_CURLY_BRACKET;
     // /\}/ => RIGHT_CURLY_BRACKET;
