@@ -23,45 +23,14 @@ use crate::{
 pub enum Expression {
     SymbolSet { intervals: Vec<Interval<u32>> },
     NegatedSymbolSet { intervals: Vec<Interval<u32>> },
-    Alternation { res: Vec<Re> },
-    Concatenation { res: Vec<Re> },
-    Repetition { re: Box<Re>, min: Option<u32>, max: Option<u32> },
+    Alternation { expressions: Vec<Expression> },
+    Concatenation { expressions: Vec<Expression> },
+    Repetition { expression: Box<Expression>, min: Option<u32>, max: Option<u32> },
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Re {
-    expression: Expression,
-    dfa: Option<Dfa<Set<u32>, u32>>,
-}
-
-impl Re {
-    pub fn new(expression: Expression) -> Re {
-        Re { expression, dfa: None }
-    }
-
-    pub fn compile(&mut self) {
-        if self.dfa.is_none() {
-            self.dfa = Some(Dfa::from(&self.as_enfa(&mut SimpleStateGenerator::new())));
-        }
-    }
-
-    pub fn is_match(&self, text: &str) -> bool {
-        if let Some(dfa) = self.dfa.as_ref() {
-            let mut source_index = dfa.initial_index();
-            for character in text.chars() {
-                if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
-                    let (_, _, target_index) = dfa.transitions_index(transition_index);
-                    source_index = target_index;
-                } else { return false; }
-            }
-            dfa.is_final(source_index)
-        } else {
-            panic!("regular expression must be compiled")
-        }
-    }
-
+impl Expression {
     pub fn as_enfa<S: Clone + Ord, G: StateGenerator<State = S>>(&self, states: &mut G) -> Enfa<S, u32> {
-        match &self.expression {
+        match self {
             Expression::SymbolSet { intervals } => {
                 let mut sym = Enfa::new(states.next_initial());
                 let sym_final_index = sym.states_insert(states.next_final());
@@ -90,11 +59,11 @@ impl Re {
                 neg.set_final(neg_final_index);
                 neg
             },
-            Expression::Alternation { res } => {
+            Expression::Alternation { expressions } => {
                 let mut alt = Enfa::new(states.next_initial());
                 let alt_final_index = alt.states_insert(states.next_final());
-                for re in res {
-                    let fa = re.as_enfa(states.disable_final());
+                for expression in expressions {
+                    let fa = expression.as_enfa(states.disable_final());
                     alt.subsume(&fa);
                     let fa_initial_index = states_contains_from(&alt, &fa, fa.initial_index()).expect("state does not exist");
                     alt.transitions_insert((alt.initial_index(), Interval::empty(), fa_initial_index));
@@ -106,12 +75,12 @@ impl Re {
                 alt.set_final(alt_final_index);
                 alt
             },
-            Expression::Concatenation { res } => {
+            Expression::Concatenation { expressions } => {
                 let mut con = Enfa::new(states.next_initial());
                 let con_final_index = con.states_insert(states.next_final());
                 let mut prev_fa_final_indices = set![con.initial_index()];
-                for re in res {
-                    let fa = re.as_enfa(states.disable_final());
+                for expression in expressions {
+                    let fa = expression.as_enfa(states.disable_final());
                     con.subsume(&fa);
                     let fa_initial_index = states_contains_from(&con, &fa, fa.initial_index()).expect("state does not exist");
                     for prev_fa_final_index in prev_fa_final_indices {
@@ -125,13 +94,13 @@ impl Re {
                 con.set_final(con_final_index);
                 con
             },
-            Expression::Repetition { re, min, max } => {
+            Expression::Repetition { expression, min, max } => {
                 let mut rep = Enfa::new(states.next_initial());
                 let rep_final_index = rep.states_insert(states.next_final());
                 let mut prev_fa_final_indices = set![rep.initial_index()];
                 let mut count = 0;
                 while if let Some(min) = min { count < *min } else { false } {
-                    let fa = re.as_enfa(states.disable_final());
+                    let fa = expression.as_enfa(states.disable_final());
                     rep.subsume(&fa);
                     let fa_initial_index = states_contains_from(&rep, &fa, fa.initial_index()).expect("state does not exist");
                     for prev_fa_final_index in prev_fa_final_indices {
@@ -142,7 +111,7 @@ impl Re {
                 }
                 if let Some(max) = max {
                     while count < *max {
-                        let fa = re.as_enfa(states.disable_final());
+                        let fa = expression.as_enfa(states.disable_final());
                         rep.subsume(&fa);
                         let fa_initial_index = states_contains_from(&rep, &fa, fa.initial_index()).expect("state does not exist");
                         for prev_fa_final_index in prev_fa_final_indices {
@@ -156,7 +125,7 @@ impl Re {
                         rep.transitions_insert((prev_fa_final_index, Interval::empty(), rep_final_index));
                     }
                 } else {
-                    let fa = re.as_enfa(states.disable_final());
+                    let fa = expression.as_enfa(states.disable_final());
                     rep.subsume(&fa);
                     let fa_initial_index = states_contains_from(&rep, &fa, fa.initial_index()).expect("state does not exist");
                     for prev_fa_final_index in prev_fa_final_indices {
@@ -176,9 +145,80 @@ impl Re {
     }
 }
 
+impl From<Re> for Expression {
+    fn from(re: Re) -> Expression {
+        re.into_expression()
+    }
+}
+
+impl From<&Expression> for Enfa<u32, u32> {
+    fn from(expression: &Expression) -> Enfa<u32, u32> {
+        expression.as_enfa(&mut SimpleStateGenerator::new())
+    }
+}
+
+impl From<&Expression> for Nfa<Set<u32>, u32> {
+    fn from(expression: &Expression) -> Nfa<Set<u32>, u32> {
+        Nfa::from(&Enfa::from(expression))
+    }
+}
+
+impl From<&Expression> for Dfa<Set<u32>, u32> {
+    fn from(expression: &Expression) -> Dfa<Set<u32>, u32> {
+        Dfa::from(&Enfa::from(expression))
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Re {
+    expression: Expression,
+    dfa: Option<Dfa<Set<u32>, u32>>,
+}
+
+impl Re {
+    pub fn new(expression: Expression) -> Re {
+        Re { expression, dfa: None }
+    }
+
+    pub fn compile(&mut self) {
+        if self.dfa.is_none() {
+            self.dfa = Some(Dfa::from(&self.expression));
+        }
+    }
+
+    pub fn is_match(&self, text: &str) -> bool {
+        if let Some(dfa) = self.dfa.as_ref() {
+            let mut source_index = dfa.initial_index();
+            for character in text.chars() {
+                if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
+                    let (_, _, target_index) = dfa.transitions_index(transition_index);
+                    source_index = target_index;
+                } else { return false; }
+            }
+            dfa.is_final(source_index)
+        } else {
+            panic!("regular expression must be compiled")
+        }
+    }
+
+    pub fn into_expression(self) -> Expression {
+        self.expression
+    }
+
+    pub fn as_expression(&self) -> &Expression {
+        &self.expression
+    }
+}
+
+impl From<Expression> for Re {
+    fn from(expression: Expression) -> Re {
+        Re::new(expression)
+    }
+}
+
 impl From<&Re> for Enfa<u32, u32> {
     fn from(re: &Re) -> Enfa<u32, u32> {
-        re.as_enfa(&mut SimpleStateGenerator::new())
+        Enfa::from(re.as_expression())
     }
 }
 
@@ -200,7 +240,7 @@ macro_rules! sym {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::new($crate::re::Expression::SymbolSet { intervals: temp_vec })
+        $crate::re::Expression::SymbolSet { intervals: temp_vec }
     }}
 }
 
@@ -210,7 +250,7 @@ macro_rules! neg {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::new($crate::re::Expression::NegatedSymbolSet { intervals: temp_vec })
+        $crate::re::Expression::NegatedSymbolSet { intervals: temp_vec }
     }}
 }
 
@@ -220,7 +260,7 @@ macro_rules! alt {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::new($crate::re::Expression::Alternation { res: temp_vec })
+        $crate::re::Expression::Alternation { expressions: temp_vec }
     }}
 }
 
@@ -230,35 +270,35 @@ macro_rules! con {
         #[allow(unused_mut)]
         let mut temp_vec = Vec::new();
         $(temp_vec.push($x);)*
-        $crate::re::Re::new($crate::re::Expression::Concatenation { res: temp_vec })
+        $crate::re::Expression::Concatenation { expressions: temp_vec }
     }}
 }
 
 #[macro_export]
 macro_rules! rep {
     ($x:expr, $y:expr, $z:expr) => {{
-        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: $y, max: $z })
+        $crate::re::Expression::Repetition { expression: Box::new($x), min: $y, max: $z }
     }}
 }
 
 #[macro_export]
 macro_rules! ast { // asterisk
     ($x:expr) => {{
-        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: None })
+        $crate::re::Expression::Repetition { expression: Box::new($x), min: None, max: None }
     }}
 }
 
 #[macro_export]
 macro_rules! plu { // plus sign
     ($x:expr) => {{
-        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: Some(1), max: None })
+        $crate::re::Expression::Repetition { expression: Box::new($x), min: Some(1), max: None }
     }}
 }
 
 #[macro_export]
 macro_rules! que { // question mark
     ($x:expr) => {{
-        $crate::re::Re::new($crate::re::Expression::Repetition { re: Box::new($x), min: None, max: Some(1) })
+        $crate::re::Expression::Repetition { expression: Box::new($x), min: None, max: Some(1) }
     }}
 }
 
@@ -295,6 +335,7 @@ mod tests {
         Enfa,
         Dfa,
     };
+    use crate::Re;
 
     #[test]
     fn test_enfa_epsilon() {
@@ -397,7 +438,7 @@ mod tests {
                 (0, Interval::empty(), 2),
                 (2, Interval::singleton(u32::from('A')), 3),
                 (3, Interval::empty(), 4),
-                (4, sgl!('B'), 5),
+                (4, Interval::singleton(u32::from('B')), 5),
                 (5, Interval::empty(), 1)
             ],
             finals: set![1]
@@ -545,7 +586,7 @@ mod tests {
     #[test]
     fn test_match_epsilon_1() {
         // r"[]"
-        let mut re = sym![];
+        let mut re = Re::new(sym![]);
         re.compile();
         assert!(re.is_match(""));
     }
@@ -553,7 +594,7 @@ mod tests {
     #[test]
     fn test_match_epsilon_2() {
         // r"[]"
-        let mut re = sym![];
+        let mut re = Re::new(sym![]);
         re.compile();
         assert!(!re.is_match("A"));
     }
@@ -561,7 +602,7 @@ mod tests {
     #[test]
     fn test_match_symbol_1() {
         // r"A"
-        let mut re = sym![sgl!('A')];
+        let mut re = Re::new(sym![sgl!('A')]);
         re.compile();
         assert!(re.is_match("A"));
     }
@@ -569,7 +610,7 @@ mod tests {
     #[test]
     fn test_match_symbol_2() {
         // r"A"
-        let mut re = sym![sgl!('A')];
+        let mut re = Re::new(sym![sgl!('A')]);
         re.compile();
         assert!(!re.is_match("B"));
     }
@@ -577,7 +618,7 @@ mod tests {
     #[test]
     fn test_match_negated_symbol_1() {
         // r"[^A]"
-        let mut re = neg![sgl!('A')];
+        let mut re = Re::new(neg![sgl!('A')]);
         re.compile();
         assert!(re.is_match("B"));
     }
@@ -585,7 +626,7 @@ mod tests {
     #[test]
     fn test_match_negated_symbol_2() {
         // r"[^A]"
-        let mut re = neg![sgl!('A')];
+        let mut re = Re::new(neg![sgl!('A')]);
         re.compile();
         assert!(!re.is_match("A"));
     }
@@ -593,7 +634,7 @@ mod tests {
     #[test]
     fn test_match_symbol_set_1() {
         // r"[A-Za-z]"
-        let mut re = sym![rng!('A', 'Z'), rng!('a', 'z')];
+        let mut re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
         re.compile();
         assert!(re.is_match("D"));
     }
@@ -601,7 +642,7 @@ mod tests {
     #[test]
     fn test_match_symbol_set_2() {
         // r"[A-Za-z]"
-        let mut re = sym![rng!('A', 'Z'), rng!('a', 'z')];
+        let mut re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
         re.compile();
         assert!(!re.is_match("_"));
     }
@@ -609,7 +650,7 @@ mod tests {
     #[test]
     fn test_match_negated_symbol_set_1() {
         // r"[^A-Za-z]"
-        let mut re = neg![rng!('A', 'Z'), rng!('a', 'z')];
+        let mut re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
         re.compile();
         assert!(re.is_match("_"));
     }
@@ -617,7 +658,7 @@ mod tests {
     #[test]
     fn test_match_negated_symbol_set_2() {
         // r"[^A-Za-z]"
-        let mut re = neg![rng!('A', 'Z'), rng!('a', 'z')];
+        let mut re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
         re.compile();
         assert!(!re.is_match("D"));
     }
@@ -625,7 +666,7 @@ mod tests {
     #[test]
     fn test_match_alternation_1() {
         // r"A|B"
-        let mut re = alt![sym![sgl!('A')], sym![sgl!('B')]];
+        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
         re.compile();
         assert!(re.is_match("A"));
     }
@@ -633,7 +674,7 @@ mod tests {
     #[test]
     fn test_match_alternation_2() {
         // r"A|B"
-        let mut re = alt![sym![sgl!('A')], sym![sgl!('B')]];
+        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
         re.compile();
         assert!(re.is_match("B"));
     }
@@ -641,7 +682,7 @@ mod tests {
     #[test]
     fn test_match_alternation_3() {
         // r"A|B"
-        let mut re = alt![sym![sgl!('A')], sym![sgl!('B')]];
+        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
         re.compile();
         assert!(!re.is_match("C"));
     }
@@ -649,7 +690,7 @@ mod tests {
     #[test]
     fn test_match_concatenation_1() {
         // r"AB"
-        let mut re = con![sym![sgl!('A')], sym![sgl!('B')]];
+        let mut re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
         re.compile();
         assert!(re.is_match("AB"));
     }
@@ -657,7 +698,7 @@ mod tests {
     #[test]
     fn test_match_concatenation_2() {
         // r"AB"
-        let mut re = con![sym![sgl!('A')], sym![sgl!('B')]];
+        let mut re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
         re.compile();
         assert!(!re.is_match("AA"));
     }
@@ -665,7 +706,7 @@ mod tests {
     #[test]
     fn test_match_repetition_1() {
         // r"A*"
-        let mut re = ast!(sym![sgl!('A')]);
+        let mut re = Re::new(ast!(sym![sgl!('A')]));
         re.compile();
         assert!(re.is_match("AAAAAAAAA"));
     }
@@ -673,7 +714,7 @@ mod tests {
     #[test]
     fn test_match_repetition_2() {
         // r"A*"
-        let mut re = ast!(sym![sgl!('A')]);
+        let mut re = Re::new(ast!(sym![sgl!('A')]));
         re.compile();
         assert!(!re.is_match("AAAABAAAA"));
     }
@@ -681,7 +722,7 @@ mod tests {
     #[test]
     fn test_match_repetition_3() {
         // r"A*"
-        let mut re = ast!(sym![sgl!('A')]);
+        let mut re = Re::new(ast!(sym![sgl!('A')]));
         re.compile();
         assert!(re.is_match(""));
     }
@@ -689,7 +730,7 @@ mod tests {
     #[test]
     fn test_match_repetition_4() {
         // r"A+"
-        let mut re = plu!(sym![sgl!('A')]);
+        let mut re = Re::new(plu!(sym![sgl!('A')]));
         re.compile();
         assert!(re.is_match("AAAAAAAAAA"));
     }
@@ -697,7 +738,7 @@ mod tests {
     #[test]
     fn test_match_repetition_5() {
         // r"A+"
-        let mut re = plu!(sym![sgl!('A')]);
+        let mut re = Re::new(plu!(sym![sgl!('A')]));
         re.compile();
         assert!(!re.is_match("AAAABAAAAA"));
     }
@@ -705,7 +746,7 @@ mod tests {
     #[test]
     fn test_match_repetition_6() {
         // r"A+"
-        let mut re = plu!(sym![sgl!('A')]);
+        let mut re = Re::new(plu!(sym![sgl!('A')]));
         re.compile();
         assert!(!re.is_match(""));
     }
@@ -713,7 +754,7 @@ mod tests {
     #[test]
     fn test_match_repetition_7() {
         // r"A?"
-        let mut re = que!(sym![sgl!('A')]);
+        let mut re = Re::new(que!(sym![sgl!('A')]));
         re.compile();
         assert!(re.is_match("A"));
     }
@@ -721,7 +762,7 @@ mod tests {
     #[test]
     fn test_match_repetition_8() {
         // r"A?"
-        let mut re = que!(sym![sgl!('A')]);
+        let mut re = Re::new(que!(sym![sgl!('A')]));
         re.compile();
         assert!(!re.is_match("B"));
     }
@@ -729,7 +770,7 @@ mod tests {
     #[test]
     fn test_match_repetition_9() {
         // r"A?"
-        let mut re = que!(sym![sgl!('A')]);
+        let mut re = Re::new(que!(sym![sgl!('A')]));
         re.compile();
         assert!(re.is_match(""));
     }
@@ -737,7 +778,7 @@ mod tests {
     #[test]
     fn test_match_repetition_10() {
         // r"A{,3}"
-        let mut re = rep!(sym![sgl!('A')], None, Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
         re.compile();
         assert!(re.is_match(""));
     }
@@ -745,7 +786,7 @@ mod tests {
     #[test]
     fn test_match_repetition_11() {
         // r"A{,3}"
-        let mut re = rep!(sym![sgl!('A')], None, Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
         re.compile();
         assert!(re.is_match("AA"));
     }
@@ -753,7 +794,7 @@ mod tests {
     #[test]
     fn test_match_repetition_12() {
         // r"A{,3}"
-        let mut re = rep!(sym![sgl!('A')], None, Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
         re.compile();
         assert!(re.is_match("AAA"));
     }
@@ -761,7 +802,7 @@ mod tests {
     #[test]
     fn test_match_repetition_13() {
         // r"A{,3}"
-        let mut re = rep!(sym![sgl!('A')], None, Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
         re.compile();
         assert!(!re.is_match("AAAA"));
     }
@@ -769,7 +810,7 @@ mod tests {
     #[test]
     fn test_match_repetition_14() {
         // r"A{3,}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), None);
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
         re.compile();
         assert!(!re.is_match(""));
     }
@@ -777,7 +818,7 @@ mod tests {
     #[test]
     fn test_match_repetition_15() {
         // r"A{3,}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), None);
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
         re.compile();
         assert!(!re.is_match("AA"));
     }
@@ -785,7 +826,7 @@ mod tests {
     #[test]
     fn test_match_repetition_16() {
         // r"A{3,}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), None);
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
         re.compile();
         assert!(re.is_match("AAA"));
     }
@@ -793,7 +834,7 @@ mod tests {
     #[test]
     fn test_match_repetition_17() {
         // r"A{3,}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), None);
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
         re.compile();
         assert!(re.is_match("AAAA"));
     }
@@ -801,7 +842,7 @@ mod tests {
     #[test]
     fn test_match_repetition_18() {
         // r"A{3}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
         re.compile();
         assert!(!re.is_match(""));
     }
@@ -809,7 +850,7 @@ mod tests {
     #[test]
     fn test_match_repetition_19() {
         // r"A{3}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
         re.compile();
         assert!(!re.is_match("AA"));
     }
@@ -817,7 +858,7 @@ mod tests {
     #[test]
     fn test_match_repetition_20() {
         // r"A{3}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
         re.compile();
         assert!(re.is_match("AAA"));
     }
@@ -825,7 +866,7 @@ mod tests {
     #[test]
     fn test_match_repetition_21() {
         // r"A{3}"
-        let mut re = rep!(sym![sgl!('A')], Some(3), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
         re.compile();
         assert!(!re.is_match("AAAA"));
     }
@@ -833,7 +874,7 @@ mod tests {
     #[test]
     fn test_match_repetition_22() {
         // r"A{2,3}"
-        let mut re = rep!(sym![sgl!('A')], Some(2), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
         re.compile();
         assert!(!re.is_match(""));
     }
@@ -841,7 +882,7 @@ mod tests {
     #[test]
     fn test_match_repetition_23() {
         // r"A{2,3}"
-        let mut re = rep!(sym![sgl!('A')], Some(2), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
         re.compile();
         assert!(re.is_match("AA"));
     }
@@ -849,7 +890,7 @@ mod tests {
     #[test]
     fn test_match_repetition_24() {
         // r"A{2,3}"
-        let mut re = rep!(sym![sgl!('A')], Some(2), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
         re.compile();
         assert!(re.is_match("AAA"));
     }
@@ -857,7 +898,7 @@ mod tests {
     #[test]
     fn test_match_repetition_25() {
         // r"A{2,3}"
-        let mut re = rep!(sym![sgl!('A')], Some(2), Some(3));
+        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
         re.compile();
         assert!(!re.is_match("AAAA"));
     }
@@ -865,7 +906,7 @@ mod tests {
     #[test]
     fn test_match_complex_1() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]];
+        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
         re.compile();
         assert!(re.is_match("ABBBA"));
     }
@@ -873,7 +914,7 @@ mod tests {
     #[test]
     fn test_match_complex_2() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]];
+        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
         re.compile();
         assert!(!re.is_match("ABBA"));
     }
@@ -881,7 +922,7 @@ mod tests {
     #[test]
     fn test_match_complex_3() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]];
+        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
         re.compile();
         assert!(re.is_match("ABBAAA"));
     }

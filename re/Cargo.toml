@@ -11,4 +11,5 @@ lazy_static = "1.4.0"
 interval-map = { path = "../../IntervalMap" }
 finite-automata = { path = "../../FiniteAutomata" }
 re-bootstrap = { path = "../re-bootstrap" }
+lexer-bootstrap = { path = "../../LexerGenerator/lexer-bootstrap" }
 parser-bootstrap = { path = "../../ParserGenerator/parser-bootstrap" }
