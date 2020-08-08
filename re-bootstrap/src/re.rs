@@ -19,8 +19,6 @@ use crate::{
     SimpleStateGenerator,
 };
 
-type Result<T> = std::result::Result<T, &'static str>;
-
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Expression {
     SymbolSet { intervals: Vec<Interval<u32>> },
@@ -174,31 +172,23 @@ impl From<&Expression> for Dfa<Set<u32>, u32> {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Re {
     expression: Expression,
-    dfa: Option<Dfa<Set<u32>, u32>>,
+    dfa: Dfa<Set<u32>, u32>
 }
 
 impl Re {
     pub fn new(expression: Expression) -> Re {
-        Re { expression, dfa: None }
+        Re { dfa: Dfa::from(&expression), expression }
     }
 
-    pub fn compile(&mut self) {
-        if self.dfa.is_none() {
-            self.dfa = Some(Dfa::from(&self.expression));
+    pub fn is_match(&self, text: &str) -> bool {
+        let mut source_index = self.dfa.initial_index();
+        for character in text.chars() {
+            if let Some(transition_index) = self.dfa.transitions_contains_outgoing((source_index, &character.into())) {
+                let (_, _, target_index) = self.dfa.transitions_index(transition_index);
+                source_index = target_index;
+            } else { return false; }
         }
-    }
-
-    pub fn is_match(&self, text: &str) -> Result<bool> {
-        if let Some(dfa) = self.dfa.as_ref() {
-            let mut source_index = dfa.initial_index();
-            for character in text.chars() {
-                if let Some(transition_index) = dfa.transitions_contains_outgoing((source_index, &character.into())) {
-                    let (_, _, target_index) = dfa.transitions_index(transition_index);
-                    source_index = target_index;
-                } else { return Ok(false); }
-            }
-            Ok(dfa.is_final(source_index))
-        } else { Err("not compiled") }
+        self.dfa.is_final(source_index)
     }
 
     pub fn into_expression(self) -> Expression {
@@ -336,7 +326,6 @@ mod tests {
         Dfa,
     };
     use crate::Re;
-    use super::Result;
 
     #[test]
     fn test_enfa_epsilon() {
@@ -585,390 +574,304 @@ mod tests {
     }
 
     #[test]
-    fn test_match_epsilon_1() -> Result<()> {
+    fn test_match_epsilon_1() {
         // r"[]"
-        let mut re = Re::new(sym![]);
-        re.compile();
-        assert!(re.is_match("")?);
-        Ok(())
+        let re = Re::new(sym![]);
+        assert!(re.is_match(""));
     }
 
     #[test]
-    fn test_match_epsilon_2() -> Result<()> {
+    fn test_match_epsilon_2() {
         // r"[]"
-        let mut re = Re::new(sym![]);
-        re.compile();
-        assert!(!re.is_match("A")?);
-        Ok(())
+        let re = Re::new(sym![]);
+        assert!(!re.is_match("A"));
     }
 
     #[test]
-    fn test_match_symbol_1() -> Result<()> {
+    fn test_match_symbol_1() {
         // r"A"
-        let mut re = Re::new(sym![sgl!('A')]);
-        re.compile();
-        assert!(re.is_match("A")?);
-        Ok(())
+        let re = Re::new(sym![sgl!('A')]);
+        assert!(re.is_match("A"));
     }
 
     #[test]
-    fn test_match_symbol_2() -> Result<()> {
+    fn test_match_symbol_2() {
         // r"A"
-        let mut re = Re::new(sym![sgl!('A')]);
-        re.compile();
-        assert!(!re.is_match("B")?);
-        Ok(())
+        let re = Re::new(sym![sgl!('A')]);
+        assert!(!re.is_match("B"));
     }
 
     #[test]
-    fn test_match_negated_symbol_1() -> Result<()> {
+    fn test_match_negated_symbol_1() {
         // r"[^A]"
-        let mut re = Re::new(neg![sgl!('A')]);
-        re.compile();
-        assert!(re.is_match("B")?);
-        Ok(())
+        let re = Re::new(neg![sgl!('A')]);
+        assert!(re.is_match("B"));
     }
 
     #[test]
-    fn test_match_negated_symbol_2() -> Result<()> {
+    fn test_match_negated_symbol_2() {
         // r"[^A]"
-        let mut re = Re::new(neg![sgl!('A')]);
-        re.compile();
-        assert!(!re.is_match("A")?);
-        Ok(())
+        let re = Re::new(neg![sgl!('A')]);
+        assert!(!re.is_match("A"));
     }
 
     #[test]
-    fn test_match_symbol_set_1() -> Result<()> {
+    fn test_match_symbol_set_1() {
         // r"[A-Za-z]"
-        let mut re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
-        re.compile();
-        assert!(re.is_match("D")?);
-        Ok(())
+        let re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
+        assert!(re.is_match("D"));
     }
 
     #[test]
-    fn test_match_symbol_set_2() -> Result<()> {
+    fn test_match_symbol_set_2() {
         // r"[A-Za-z]"
-        let mut re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
-        re.compile();
-        assert!(!re.is_match("_")?);
-        Ok(())
+        let re = Re::new(sym![rng!('A', 'Z'), rng!('a', 'z')]);
+        assert!(!re.is_match("_"));
     }
 
     #[test]
-    fn test_match_negated_symbol_set_1() -> Result<()> {
+    fn test_match_negated_symbol_set_1() {
         // r"[^A-Za-z]"
-        let mut re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
-        re.compile();
-        assert!(re.is_match("_")?);
-        Ok(())
+        let re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
+        assert!(re.is_match("_"));
     }
 
     #[test]
-    fn test_match_negated_symbol_set_2() -> Result<()> {
+    fn test_match_negated_symbol_set_2() {
         // r"[^A-Za-z]"
-        let mut re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
-        re.compile();
-        assert!(!re.is_match("D")?);
-        Ok(())
+        let re = Re::new(neg![rng!('A', 'Z'), rng!('a', 'z')]);
+        assert!(!re.is_match("D"));
     }
 
     #[test]
-    fn test_match_alternation_1() -> Result<()> {
+    fn test_match_alternation_1() {
         // r"A|B"
-        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
-        re.compile();
-        assert!(re.is_match("A")?);
-        Ok(())
+        let re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
+        assert!(re.is_match("A"));
     }
 
     #[test]
-    fn test_match_alternation_2() -> Result<()> {
+    fn test_match_alternation_2() {
         // r"A|B"
-        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
-        re.compile();
-        assert!(re.is_match("B")?);
-        Ok(())
+        let re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
+        assert!(re.is_match("B"));
     }
 
     #[test]
-    fn test_match_alternation_3() -> Result<()> {
+    fn test_match_alternation_3() {
         // r"A|B"
-        let mut re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
-        re.compile();
-        assert!(!re.is_match("C")?);
-        Ok(())
+        let re = Re::new(alt![sym![sgl!('A')], sym![sgl!('B')]]);
+        assert!(!re.is_match("C"));
     }
 
     #[test]
-    fn test_match_concatenation_1() -> Result<()> {
+    fn test_match_concatenation_1() {
         // r"AB"
-        let mut re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
-        re.compile();
-        assert!(re.is_match("AB")?);
-        Ok(())
+        let re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
+        assert!(re.is_match("AB"));
     }
 
     #[test]
-    fn test_match_concatenation_2() -> Result<()> {
+    fn test_match_concatenation_2() {
         // r"AB"
-        let mut re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
-        re.compile();
-        assert!(!re.is_match("AA")?);
-        Ok(())
+        let re = Re::new(con![sym![sgl!('A')], sym![sgl!('B')]]);
+        assert!(!re.is_match("AA"));
     }
 
     #[test]
-    fn test_match_repetition_1() -> Result<()> {
+    fn test_match_repetition_1() {
         // r"A*"
-        let mut re = Re::new(ast!(sym![sgl!('A')]));
-        re.compile();
-        assert!(re.is_match("AAAAAAAAA")?);
-        Ok(())
+        let re = Re::new(ast!(sym![sgl!('A')]));
+        assert!(re.is_match("AAAAAAAAA"));
     }
 
     #[test]
-    fn test_match_repetition_2() -> Result<()> {
+    fn test_match_repetition_2() {
         // r"A*"
-        let mut re = Re::new(ast!(sym![sgl!('A')]));
-        re.compile();
-        assert!(!re.is_match("AAAABAAAA")?);
-        Ok(())
+        let re = Re::new(ast!(sym![sgl!('A')]));
+        assert!(!re.is_match("AAAABAAAA"));
     }
 
     #[test]
-    fn test_match_repetition_3() -> Result<()> {
+    fn test_match_repetition_3() {
         // r"A*"
-        let mut re = Re::new(ast!(sym![sgl!('A')]));
-        re.compile();
-        assert!(re.is_match("")?);
-        Ok(())
+        let re = Re::new(ast!(sym![sgl!('A')]));
+        assert!(re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_4() -> Result<()> {
+    fn test_match_repetition_4() {
         // r"A+"
-        let mut re = Re::new(plu!(sym![sgl!('A')]));
-        re.compile();
-        assert!(re.is_match("AAAAAAAAAA")?);
-        Ok(())
+        let re = Re::new(plu!(sym![sgl!('A')]));
+        assert!(re.is_match("AAAAAAAAAA"));
     }
 
     #[test]
-    fn test_match_repetition_5() -> Result<()> {
+    fn test_match_repetition_5() {
         // r"A+"
-        let mut re = Re::new(plu!(sym![sgl!('A')]));
-        re.compile();
-        assert!(!re.is_match("AAAABAAAAA")?);
-        Ok(())
+        let re = Re::new(plu!(sym![sgl!('A')]));
+        assert!(!re.is_match("AAAABAAAAA"));
     }
 
     #[test]
-    fn test_match_repetition_6() -> Result<()> {
+    fn test_match_repetition_6() {
         // r"A+"
-        let mut re = Re::new(plu!(sym![sgl!('A')]));
-        re.compile();
-        assert!(!re.is_match("")?);
-        Ok(())
+        let re = Re::new(plu!(sym![sgl!('A')]));
+        assert!(!re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_7() -> Result<()> {
+    fn test_match_repetition_7() {
         // r"A?"
-        let mut re = Re::new(que!(sym![sgl!('A')]));
-        re.compile();
-        assert!(re.is_match("A")?);
-        Ok(())
+        let re = Re::new(que!(sym![sgl!('A')]));
+        assert!(re.is_match("A"));
     }
 
     #[test]
-    fn test_match_repetition_8() -> Result<()> {
+    fn test_match_repetition_8() {
         // r"A?"
-        let mut re = Re::new(que!(sym![sgl!('A')]));
-        re.compile();
-        assert!(!re.is_match("B")?);
-        Ok(())
+        let re = Re::new(que!(sym![sgl!('A')]));
+        assert!(!re.is_match("B"));
     }
 
     #[test]
-    fn test_match_repetition_9() -> Result<()> {
+    fn test_match_repetition_9() {
         // r"A?"
-        let mut re = Re::new(que!(sym![sgl!('A')]));
-        re.compile();
-        assert!(re.is_match("")?);
-        Ok(())
+        let re = Re::new(que!(sym![sgl!('A')]));
+        assert!(re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_10() -> Result<()> {
+    fn test_match_repetition_10() {
         // r"A{,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
-        re.compile();
-        assert!(re.is_match("")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
+        assert!(re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_11() -> Result<()> {
+    fn test_match_repetition_11() {
         // r"A{,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
-        re.compile();
-        assert!(re.is_match("AA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
+        assert!(re.is_match("AA"));
     }
 
     #[test]
-    fn test_match_repetition_12() -> Result<()> {
+    fn test_match_repetition_12() {
         // r"A{,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
-        re.compile();
-        assert!(re.is_match("AAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
+        assert!(re.is_match("AAA"));
     }
 
     #[test]
-    fn test_match_repetition_13() -> Result<()> {
+    fn test_match_repetition_13() {
         // r"A{,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
-        re.compile();
-        assert!(!re.is_match("AAAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], None, Some(3)));
+        assert!(!re.is_match("AAAA"));
     }
 
     #[test]
-    fn test_match_repetition_14() -> Result<()> {
+    fn test_match_repetition_14() {
         // r"A{3,}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
-        re.compile();
-        assert!(!re.is_match("")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
+        assert!(!re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_15() -> Result<()> {
+    fn test_match_repetition_15() {
         // r"A{3,}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
-        re.compile();
-        assert!(!re.is_match("AA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
+        assert!(!re.is_match("AA"));
     }
 
     #[test]
-    fn test_match_repetition_16() -> Result<()> {
+    fn test_match_repetition_16() {
         // r"A{3,}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
-        re.compile();
-        assert!(re.is_match("AAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
+        assert!(re.is_match("AAA"));
     }
 
     #[test]
-    fn test_match_repetition_17() -> Result<()> {
+    fn test_match_repetition_17() {
         // r"A{3,}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
-        re.compile();
-        assert!(re.is_match("AAAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), None));
+        assert!(re.is_match("AAAA"));
     }
 
     #[test]
-    fn test_match_repetition_18() -> Result<()> {
+    fn test_match_repetition_18() {
         // r"A{3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
-        re.compile();
-        assert!(!re.is_match("")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
+        assert!(!re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_19() -> Result<()> {
+    fn test_match_repetition_19() {
         // r"A{3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
-        re.compile();
-        assert!(!re.is_match("AA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
+        assert!(!re.is_match("AA"));
     }
 
     #[test]
-    fn test_match_repetition_20() -> Result<()> {
+    fn test_match_repetition_20() {
         // r"A{3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
-        re.compile();
-        assert!(re.is_match("AAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
+        assert!(re.is_match("AAA"));
     }
 
     #[test]
-    fn test_match_repetition_21() -> Result<()> {
+    fn test_match_repetition_21() {
         // r"A{3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
-        re.compile();
-        assert!(!re.is_match("AAAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(3), Some(3)));
+        assert!(!re.is_match("AAAA"));
     }
 
     #[test]
-    fn test_match_repetition_22() -> Result<()> {
+    fn test_match_repetition_22() {
         // r"A{2,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
-        re.compile();
-        assert!(!re.is_match("")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
+        assert!(!re.is_match(""));
     }
 
     #[test]
-    fn test_match_repetition_23() -> Result<()> {
+    fn test_match_repetition_23() {
         // r"A{2,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
-        re.compile();
-        assert!(re.is_match("AA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
+        assert!(re.is_match("AA"));
     }
 
     #[test]
-    fn test_match_repetition_24() -> Result<()> {
+    fn test_match_repetition_24() {
         // r"A{2,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
-        re.compile();
-        assert!(re.is_match("AAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
+        assert!(re.is_match("AAA"));
     }
 
     #[test]
-    fn test_match_repetition_25() -> Result<()> {
+    fn test_match_repetition_25() {
         // r"A{2,3}"
-        let mut re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
-        re.compile();
-        assert!(!re.is_match("AAAA")?);
-        Ok(())
+        let re = Re::new(rep!(sym![sgl!('A')], Some(2), Some(3)));
+        assert!(!re.is_match("AAAA"));
     }
 
     #[test]
-    fn test_match_complex_1() -> Result<()> {
+    fn test_match_complex_1() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
-        re.compile();
-        assert!(re.is_match("ABBBA")?);
-        Ok(())
+        let re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
+        assert!(re.is_match("ABBBA"));
     }
 
     #[test]
-    fn test_match_complex_2() -> Result<()> {
+    fn test_match_complex_2() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
-        re.compile();
-        assert!(!re.is_match("ABBA")?);
-        Ok(())
+        let re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
+        assert!(!re.is_match("ABBA"));
     }
 
     #[test]
-    fn test_match_complex_3() -> Result<()> {
+    fn test_match_complex_3() {
         // r"(A|B)*(AAA|BBB)(A|B)*"
-        let mut re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
-        re.compile();
-        assert!(re.is_match("ABBAAA")?);
-        Ok(())
+        let re = Re::new(con![ast![alt![sym![sgl!('A')], sym![sgl!('B')]]], alt![con![sym![sgl!('A')], sym![sgl!('A')], sym![sgl!('A')]], con![sym![sgl!('B')], sym![sgl!('B')], sym![sgl!('B')]]], ast![alt![sym![sgl!('A')], sym![sgl!('B')]]]]);
+        assert!(re.is_match("ABBAAA"));
     }
 
     struct ExpectedEnfa<S, T> {
