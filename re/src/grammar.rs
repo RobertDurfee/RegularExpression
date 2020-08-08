@@ -430,7 +430,7 @@ lazy_static! {
     ];
 
     // Root ::= Alternation;
-    // Alternation :;= Concatenation (VERTICAL_BAR Concatenation)*;
+    // Alternation ::= Concatenation (VERTICAL_BAR Concatenation)*;
     // Concatenation ::= Repetition+;
     // Repetition ::= Atom (ASTERISK | PLUS_SIGN | QUESTION_MARK | RepetitionExact | RepetitionMinimum | RepetitionMaximum | RepetitionRange)?;
     // Atom ::= SymbolSet | NegatedSymbolSet | Literal | LEFT_PARENTHESIS Alternation RIGHT_PARENTHESIS;
