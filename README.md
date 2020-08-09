@@ -93,6 +93,8 @@ pub enum Expression {
 }
 ```
 
+A representation of regular expression as an immutable recursive data type.
+
 #### Examples
 
 ```rust
