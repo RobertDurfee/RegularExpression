@@ -1,4 +1,4 @@
-# Module `re`
+# RegularExpression
 
 A library for parsing, compiling, and executing [regular expressions](https://en.wikipedia.org/wiki/Regular_expression).
 
@@ -131,7 +131,7 @@ A collection of expressions of which to match a single one. If multiple expressi
 
 ##### `Concatenation { expressions: Vec<Expression> }`
 
-A collection of expressions to match all concatenated together. Equivalent to simply placed expressions side-by-side in standard regular expressions.
+A collection of expressions to match all concatenated together. Equivalent to simply placing expressions side-by-side in standard regular expressions.
 
 ##### `Repetition { expression: Box<Expression>, min: Option<u32>, max: Option<u32> }`
 
@@ -148,7 +148,7 @@ Match a single expression a given number of times. The following are equivalent 
 
 ##### `pub fn as_enfa<S, G>(&self, states: &mut G) -> Enfa<S, u32>`
 
-Construction a nondeterministic finite automaton with epsilon moves from the `Expression` using the provided state generator.
+Construct a nondeterministic finite automaton with epsilon moves from the `Expression` using the provided state generator.
 
 ###### Examples
 
