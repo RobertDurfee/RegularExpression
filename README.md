@@ -4,7 +4,7 @@ A library for parsing, compiling, and executing [regular expressions](https://en
 
 ## Structs
 
-### `re::Re`
+### Struct `re::Re`
 
 ```rust
 pub struct Re { /* fields omitted */ }
@@ -81,7 +81,7 @@ assert_eq!(re.as_expression(), &Expression::NegatedSymbolSet {
 
 ## Enums
 
-### `re::Expression`
+### Enum `re::Expression`
 
 ```rust
 pub enum Expression {
@@ -173,7 +173,7 @@ Note: The internals of `Enfa` are much more complicated than what is shown. Ther
 
 ## Traits
 
-### `re::StateGenerator`
+### Trait `re::StateGenerator`
 
 ```rust
 pub trait StateGenerator {
@@ -253,7 +253,7 @@ Re-enable final state generation.
 
 ## Macros
 
-### `re::sym`
+### Macro `re::sym`
 
 ```rust
 macro_rules! sym {
@@ -263,7 +263,7 @@ macro_rules! sym {
 
 Construct a `SymboleSet` expression with the provided intervals.
 
-### `re::neg`
+### Macro `re::neg`
 
 ```rust
 macro_rules! neg {
@@ -273,7 +273,7 @@ macro_rules! neg {
 
 Construct a `NegatedSymbolSet` expression with the provided intervals.
 
-### `re::alt`
+### Macro `re::alt`
 
 ```rust
 macro_rules! alt {
@@ -283,7 +283,7 @@ macro_rules! alt {
 
 Construct an `Alternation` expression with the provided expressions.
 
-### `re::con`
+### Macro `re::con`
 
 ```rust
 macro_rules! con {
@@ -293,7 +293,7 @@ macro_rules! con {
 
 Construct a `Concatenation` expression with the provided expressions.
 
-### `re::rep`
+### Macro `re::rep`
 
 ```rust
 macro_rules! rep {
@@ -303,7 +303,7 @@ macro_rules! rep {
 
 Construct a `Repetition` expression with the provided expression, minimum, and maximum.
 
-### `re::ast`
+### Macro `re::ast`
 
 ```rust
 macro_rules! ast {
@@ -313,7 +313,7 @@ macro_rules! ast {
 
 Construct a `Repetition` expression with the provided expression repeating any number of times. Equivalent to the `*` (asterisk) operator in standard regular expressions.
 
-### `re::plu`
+### Macro `re::plu`
 
 ```rust
 macro_rules! plu {
@@ -323,7 +323,7 @@ macro_rules! plu {
 
 Construct a `Repetition` expression with the provided expression repeating at least one time. Equivalent to the `+` (plus sign) operator in standard regular expressions.
 
-### `re::que`
+### Macro `re::que`
 
 ```rust
 macro_rules! que {
@@ -333,7 +333,7 @@ macro_rules! que {
 
 Construct a `Repetition` expression with the provided expression repeating at most one time. Equivalent to the `?` (question mark) operator in standard regular expressions.
 
-### `re::sgl`
+### Macro `re::sgl`
 
 ```rust
 macro_rules! sgl {
@@ -343,7 +343,7 @@ macro_rules! sgl {
 
 Construct an `Interval::<u32>::singleton(...)` from the provided character.
 
-### `re::rng`
+### Macro `re::rng`
 
 ```rust
 macro_rules! rng {
@@ -353,7 +353,7 @@ macro_rules! rng {
 
 Construct an `Interval::<u32>::closed(...)` from the provided pair of characters.
 
-### `re::all`
+### Macro `re::all`
 
 ```rust
 macro_rules! all {
