@@ -4,7 +4,7 @@ use finite_automata::{
     Nfa,
     Dfa,
 };
-use re_bootstrap::Re as ReBootstrap;
+use regular_expression_bootstrap::Re as ReBootstrap;
 use crate::{
     grammar::{
         LEXER_PRODUCTIONS,
@@ -14,8 +14,8 @@ use crate::{
     },
     Expression,
 };
-use lexer_bootstrap::Lexer;
-use parser_bootstrap::Parser;
+use simple_lexer_bootstrap::Lexer;
+use simple_parser_bootstrap::Parser;
 
 type Result<T> = std::result::Result<T, &'static str>;
 
@@ -77,15 +77,12 @@ mod tests {
         fmt::Debug,
         u32,
     };
-    use interval_map::Interval;
+    use segment_map::Segment;
     use finite_automata::{
         Enfa,
         Dfa,
     };
-    use crate::{
-        Re,
-        set,
-    };
+    use crate::Re;
     use super::Result;
 
     #[test]
@@ -93,7 +90,7 @@ mod tests {
          let expected = ExpectedEnfa::<_, u32> {
             initial: 0,
             transitions: set![
-                (0, Interval::empty(), 1)
+                (0, Segment::empty(), 1)
             ],
             finals: set![1]
         };
@@ -107,7 +104,7 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::singleton(u32::from('A')), 1)
+                (0, Segment::singleton(u32::from('A')), 1)
             ],
             finals: set![1]
         };
@@ -121,8 +118,8 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::less_than(u32::from('A')), 1),
-                (0, Interval::greater_than(u32::from('A')), 1)
+                (0, Segment::less_than(u32::from('A')), 1),
+                (0, Segment::greater_than(u32::from('A')), 1)
             ],
             finals: set![1]
         };
@@ -136,8 +133,8 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::closed(u32::from('A'), u32::from('Z')), 1),
-                (0, Interval::closed(u32::from('a'), u32::from('z')), 1)
+                (0, Segment::closed(u32::from('A'), u32::from('Z')), 1),
+                (0, Segment::closed(u32::from('a'), u32::from('z')), 1)
             ],
             finals: set![1]
         };
@@ -151,9 +148,9 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::less_than(u32::from('A')), 1),
-                (0, Interval::open(u32::from('Z'), u32::from('a')), 1),
-                (0, Interval::greater_than(u32::from('z')), 1)
+                (0, Segment::less_than(u32::from('A')), 1),
+                (0, Segment::open(u32::from('Z'), u32::from('a')), 1),
+                (0, Segment::greater_than(u32::from('z')), 1)
             ],
             finals: set![1]
         };
@@ -167,12 +164,12 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::empty(), 2),
-                (0, Interval::empty(), 4),
-                (2, Interval::singleton(u32::from('A')), 3),
-                (3, Interval::empty(), 1),
-                (4, Interval::singleton(u32::from('B')), 5),
-                (5, Interval::empty(), 1)
+                (0, Segment::empty(), 2),
+                (0, Segment::empty(), 4),
+                (2, Segment::singleton(u32::from('A')), 3),
+                (3, Segment::empty(), 1),
+                (4, Segment::singleton(u32::from('B')), 5),
+                (5, Segment::empty(), 1)
             ],
             finals: set![1]
         };
@@ -186,11 +183,11 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::empty(), 2),
-                (2, Interval::singleton(u32::from('A')), 3),
-                (3, Interval::empty(), 4),
-                (4, Interval::singleton(u32::from('B')), 5),
-                (5, Interval::empty(), 1)
+                (0, Segment::empty(), 2),
+                (2, Segment::singleton(u32::from('A')), 3),
+                (3, Segment::empty(), 4),
+                (4, Segment::singleton(u32::from('B')), 5),
+                (5, Segment::empty(), 1)
             ],
             finals: set![1]
         };
@@ -204,11 +201,11 @@ mod tests {
         let expected = ExpectedEnfa {
             initial: 0,
             transitions: set![
-                (0, Interval::empty(), 2),
-                (0, Interval::empty(), 1),
-                (2, Interval::singleton(u32::from('A')), 3),
-                (3, Interval::empty(), 1),
-                (3, Interval::empty(), 2)
+                (0, Segment::empty(), 2),
+                (0, Segment::empty(), 1),
+                (2, Segment::singleton(u32::from('A')), 3),
+                (3, Segment::empty(), 1),
+                (3, Segment::empty(), 2)
             ],
             finals: set![1]
         };
@@ -234,7 +231,7 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
-                (set![0], Interval::singleton(u32::from('A')), set![1])
+                (set![0], Segment::singleton(u32::from('A')), set![1])
             ],
             finals: set![set![1]]
         };
@@ -248,8 +245,8 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
-                (set![0], Interval::less_than(u32::from('A')), set![1]),
-                (set![0], Interval::greater_than(u32::from('A')), set![1])
+                (set![0], Segment::less_than(u32::from('A')), set![1]),
+                (set![0], Segment::greater_than(u32::from('A')), set![1])
             ],
             finals: set![set![1]]
         };
@@ -263,8 +260,8 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
-                (set![0], Interval::closed(u32::from('A'), u32::from('Z')), set![1]),
-                (set![0], Interval::closed(u32::from('a'), u32::from('z')), set![1])
+                (set![0], Segment::closed(u32::from('A'), u32::from('Z')), set![1]),
+                (set![0], Segment::closed(u32::from('a'), u32::from('z')), set![1])
             ],
             finals: set![set![1]]
         };
@@ -278,9 +275,9 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0],
             transitions: set![
-                (set![0], Interval::less_than(u32::from('A')), set![1]),
-                (set![0], Interval::open(u32::from('Z'), u32::from('a')), set![1]),
-                (set![0], Interval::greater_than(u32::from('z')), set![1])
+                (set![0], Segment::less_than(u32::from('A')), set![1]),
+                (set![0], Segment::open(u32::from('Z'), u32::from('a')), set![1]),
+                (set![0], Segment::greater_than(u32::from('z')), set![1])
             ],
             finals: set![set![1]]
         };
@@ -294,8 +291,8 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0, 2, 4],
             transitions: set![
-                (set![0, 2, 4], Interval::singleton(u32::from('A')), set![1, 3]),
-                (set![0, 2, 4], Interval::singleton(u32::from('B')), set![1, 5])
+                (set![0, 2, 4], Segment::singleton(u32::from('A')), set![1, 3]),
+                (set![0, 2, 4], Segment::singleton(u32::from('B')), set![1, 5])
             ],
             finals: set![set![1, 3], set![1, 5]]
         };
@@ -309,8 +306,8 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0, 2],
             transitions: set![
-                (set![0, 2], Interval::singleton(u32::from('A')), set![3, 4]),
-                (set![3, 4], Interval::singleton(u32::from('B')), set![1, 5])
+                (set![0, 2], Segment::singleton(u32::from('A')), set![3, 4]),
+                (set![3, 4], Segment::singleton(u32::from('B')), set![1, 5])
             ],
             finals: set![set![1, 5]]
         };
@@ -324,8 +321,8 @@ mod tests {
         let expected = ExpectedDfa {
             initial: set![0, 1, 2],
             transitions: set![
-                (set![0, 1, 2], Interval::singleton(u32::from('A')), set![1, 2, 3]),
-                (set![1, 2, 3], Interval::singleton(u32::from('A')), set![1, 2, 3])
+                (set![0, 1, 2], Segment::singleton(u32::from('A')), set![1, 2, 3]),
+                (set![1, 2, 3], Segment::singleton(u32::from('A')), set![1, 2, 3])
             ],
             finals: set![set![0, 1, 2], set![1, 2, 3]]
         };
@@ -644,7 +641,7 @@ mod tests {
 
     struct ExpectedEnfa<S, T> {
         initial: S,
-        transitions: Set<(S, Interval<T>, S)>,
+        transitions: Set<(S, Segment<T>, S)>,
         finals: Set<S>,
     }
 
@@ -656,7 +653,7 @@ mod tests {
 
     struct ExpectedDfa<S, T> {
         initial: S,
-        transitions: Set<(S, Interval<T>, S)>,
+        transitions: Set<(S, Segment<T>, S)>,
         finals: Set<S>,
     }
 

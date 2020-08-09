@@ -1,4 +1,4 @@
-#[macro_export]
+#[allow(unused_macros)] // this is actually used
 macro_rules! set {
     ($($x:expr),*) => {{
         #[allow(unused_mut)]
@@ -8,7 +8,6 @@ macro_rules! set {
     }}
 }
 
-#[macro_export]
 macro_rules! map {
     ($($x:expr => $y:expr),*) => {{
         let mut temp_map = std::collections::BTreeMap::new();

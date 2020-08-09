@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "re-bootstrap",
-    "re",
+    "regular-expression-bootstrap",
+    "regular-expression",
 ]

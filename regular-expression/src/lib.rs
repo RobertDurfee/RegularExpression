@@ -1,8 +1,10 @@
+#[macro_use]
+mod util;
 mod re; 
 mod grammar;
 
 pub use crate::re::Re;
-pub use re_bootstrap::{
+pub use regular_expression_bootstrap::{
     Expression,
     sym,
     neg,
@@ -15,7 +17,5 @@ pub use re_bootstrap::{
     sgl,
     rng,
     all,
-    map,
-    set,
 };
 

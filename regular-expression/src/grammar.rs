@@ -1,6 +1,6 @@
 use std::collections::BTreeMap as Map;
 use lazy_static::lazy_static;
-use interval_map::Interval;
+use segment_map::Segment;
 use crate::{
     sym as rsym,
     neg as rneg,
@@ -10,9 +10,8 @@ use crate::{
     sgl as rsgl,
     rng as rrng,
     Expression,
-    map,
 };
-use parser_bootstrap::{
+use simple_parser_bootstrap::{
     tok as ptok,
     non as pnon,
     alt as palt,
@@ -127,30 +126,30 @@ pub fn as_expression(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<E
                 },
                 // SymbolSet ::= LEFT_SQUARE_BRACKET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
                 SymbolSet => {
-                    let mut intervals = Vec::new();
+                    let mut segments = Vec::new();
                     for i in 1..children.len()-1 {
-                        intervals.push(as_interval(&children[i])?)
+                        segments.push(as_segment(&children[i])?)
                     }
-                    Ok(Expression::SymbolSet { intervals })
+                    Ok(Expression::SymbolSet { segments })
                 },
                 // NegatedSymbolSet ::= LEFT_SQUARE_BRACKET CARET (SymbolSetRange | Literal)* RIGHT_SQUARE_BRACKET
                 NegatedSymbolSet => {
-                    let mut intervals = Vec::new();
+                    let mut segments = Vec::new();
                     for i in 2..children.len()-1 {
-                        intervals.push(as_interval(&children[i])?)
+                        segments.push(as_segment(&children[i])?)
                     }
-                    Ok(Expression::NegatedSymbolSet { intervals })
+                    Ok(Expression::NegatedSymbolSet { segments })
                 },
                 // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
                 Literal => {
-                    Ok(Expression::SymbolSet { intervals: vec![Interval::singleton(as_literal(&children[0])?)] })
+                    Ok(Expression::SymbolSet { segments: vec![Segment::singleton(as_literal(&children[0])?)] })
                 },
                 _ => Err("not expression")
             }
         },
         ParseTree::Token { token } => {
             if let FULL_STOP = token.kind() {
-                Ok(Expression::SymbolSet { intervals: vec![Interval::all()] })
+                Ok(Expression::SymbolSet { segments: vec![Segment::all()] })
             } else { Err("not expression") }
         },
         _ => Err("not expression")
@@ -201,22 +200,22 @@ fn as_range(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<(Option<u3
     }
 }
 
-fn as_interval(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<Interval<u32>> {
+fn as_segment(parse_tree: &ParseTree<Nonterminal, TokenKind>) -> Result<Segment<u32>> {
     match parse_tree {
         ParseTree::Nonterminal { nonterminal, children, .. } => {
             match nonterminal {
                 // SymbolSetRange ::= Literal HYPHEN Literal;
                 SymbolSetRange => {
-                    Ok(Interval::closed(*as_interval(&children[0])?.lower(), *as_interval(&children[2])?.lower()))
+                    Ok(Segment::closed(*as_segment(&children[0])?.lower(), *as_segment(&children[2])?.lower()))
                 },
                 // Literal ::= COMMA | DIGIT | CONTROL | UNESCAPED | ESCAPED | OCTAL | HEXADECIMAL | UNICODE;
                 Literal => {
-                    Ok(Interval::singleton(as_literal(&children[0])?))
+                    Ok(Segment::singleton(as_literal(&children[0])?))
                 },
-                _ => Err("not interval")
+                _ => Err("not segment")
             }
         },
-        _ => Err("not interval")
+        _ => Err("not segment")
     }
 }
 
@@ -360,7 +359,7 @@ lazy_static! {
     // /\\[0-7]{1,3}/ => OCTAL;
     // /\\x[0-9a-fA-F]{1,2}/ => HEXADECIMAL;
     // /\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/ => UNICODE;
-    pub(crate) static ref LEXER_PRODUCTIONS: Map<re_bootstrap::Expression, Option<TokenKind>> = map![
+    pub(crate) static ref LEXER_PRODUCTIONS: Map<regular_expression_bootstrap::Expression, Option<TokenKind>> = map![
         rsym![rsgl!('.')] => Some(FULL_STOP),
         rsym![rsgl!('|')] => Some(VERTICAL_BAR),
         rsym![rsgl!('*')] => Some(ASTERISK),
@@ -476,7 +475,7 @@ lazy_static! {
     // RepetitionMaximum ::= LEFT_CURLY_BRACKET COMMA Integer RIGHT_CURLY_BRACKET;
     // RepetitionRange ::= LEFT_CURLY_BRACKET Integer COMMA Integer RIGHT_CURLY_BRACKET;
     // Integer ::= DIGIT+;
-    pub(crate) static ref PARSER_PRODUCTIONS: Map<Nonterminal, parser_bootstrap::Expression<Nonterminal, TokenKind>> = map![
+    pub(crate) static ref PARSER_PRODUCTIONS: Map<Nonterminal, simple_parser_bootstrap::Expression<Nonterminal, TokenKind>> = map![
         Root => pnon!(Alternation),
         Alternation => pcon![
             pnon!(Concatenation),

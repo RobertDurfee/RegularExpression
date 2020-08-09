@@ -1,0 +1,21 @@
+[package]
+name = "regular-expression"
+version = "0.1.0"
+authors = ["Robert Durfee <rbd@mit.edu>"]
+description = "A library for parsing, compiling, and executing regular expressions."
+license-file = "LICENSE"
+repository = "https://github.com/RobertDurfee/RegularExpression"
+readme = "README.md"
+keywords = ["regular-expression", "regex", "regexp", "re"]
+categories = ["parsing"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lazy_static = "1.4.0"
+segment-map = "0.1.0"
+finite-automata = "0.1.1"
+regular-expression-bootstrap = "0.1.0"
+simple-lexer-bootstrap = "0.1.0"
+simple-parser-bootstrap = "0.1.0"
