@@ -2,6 +2,8 @@
 
 A library for parsing, compiling, and executing [regular expressions](https://en.wikipedia.org/wiki/Regular_expression).
 
+_(Note: RegularExpression depends on both LexerGenerator and ParserGenerator to parse regular expressions. However, LexerGenerator (and thus ParserGenerator) also depends on RegularExpression. To prevent circular dependencies, an additional crate without parsing support exists (`re-bootstrap`). In general, only the `re` crate should be used.)_
+
 ## Structs
 
 ### Struct `re::Re`
