@@ -356,7 +356,7 @@ Construct an `Interval::<u32>::closed(...)` from the provided pair of characters
 ### `re::all`
 
 ```rust
-macro_rules! a;; {
+macro_rules! all {
   () => { ... }
 }
 ```
