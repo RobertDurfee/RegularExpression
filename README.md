@@ -18,7 +18,7 @@ A regular expression.
 let re = Re::new(r"[0-9]+\.?[0-9]*");
 
 assert_eq!(re.is_match("12"), true);
-assert_eq!(re.is_match("12.345), true);
+assert_eq!(re.is_match("12.345"), true);
 assert_eq!(re.is_match("A"), false);
 ```
 
