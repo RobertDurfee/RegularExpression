@@ -79,86 +79,6 @@ assert_eq!(re.as_expression(), &Expression::NegatedSymbolSet {
 })
 ```
 
-## Traits
-
-### `re::StateGenerator`
-
-```rust
-pub trait StateGenerator {
-  type State;
-  fn next_initial(&mut self) -> Self::State;
-  fn next_final(&mut self) -> Self::State;
-  fn disable_final(&mut self) -> &mut Self;
-  fn enable_final(&mut self) -> &mut Self;
-}
-```
-
-A state generator for converting expressions into finite automata.
-
-#### Examples
-
-This is a simple state generator that does not support disabling final state generation.
-
-```rust
-pub struct SimpleStateGenerator {
-  state: u64,
-}
-
-impl SimpleStateGenerator {
-  pub fn new() -> SimpleStateGenerator {
-    SimpleStateGenerator { state: 0u64 }
-  }
-}
-
-impl StateGenerator for SimpleStateGenerator {
-  type State = u64;
-  
-  fn next_initial(&mut self) -> u64 {
-    let state = self.state;
-    self.state += 1;
-    state
-  }
-  
-  fn next_final(&mut self) -> u64 {
-    let state = self.state;
-    self.state += 1;
-    state
-  }
-  
-  fn disable_final(&mut self) -> &mut SimpleStateGenerator {
-    self
-  }
-  
-  fn enable_final(&mut self) -> &mut SimpleStateGenerator {
-    self
-  }
-}
-```
-
-#### Associated Types
-
-##### `type State`
-
-The associated state that is returned when generating states.
-
-#### Required Methods
-
-##### `fn next_initial(&mut self) -> Self::State`
-
-Generate a new initial state.
-
-##### `fn next_final(&mut self) -> Self::State`
-
-Generate a new final state.
-
-##### `fn disable_final(&mut self) -> &mut Self`
-
-Temporarily disable final state generation. This is useful for nesting state generation where final states should only exist on the top-most level.
-
-##### `fn enable_final(&mut self) -> &mut Self`
-
-Re-enable final state generation.
-
 ## Enums
 
 ### `re::Expression`
@@ -250,6 +170,86 @@ assert_eq!(enfa, Enfa {
 ```
 
 Note: The internals of `Enfa` are much more complicated than what is shown. Therefore, the preceding example is somewhat pseudocode. More complete examples exist in the testing suite.
+
+## Traits
+
+### `re::StateGenerator`
+
+```rust
+pub trait StateGenerator {
+  type State;
+  fn next_initial(&mut self) -> Self::State;
+  fn next_final(&mut self) -> Self::State;
+  fn disable_final(&mut self) -> &mut Self;
+  fn enable_final(&mut self) -> &mut Self;
+}
+```
+
+A state generator for converting expressions into finite automata.
+
+#### Examples
+
+This is a simple state generator that does not support disabling final state generation.
+
+```rust
+pub struct SimpleStateGenerator {
+  state: u64,
+}
+
+impl SimpleStateGenerator {
+  pub fn new() -> SimpleStateGenerator {
+    SimpleStateGenerator { state: 0u64 }
+  }
+}
+
+impl StateGenerator for SimpleStateGenerator {
+  type State = u64;
+  
+  fn next_initial(&mut self) -> u64 {
+    let state = self.state;
+    self.state += 1;
+    state
+  }
+  
+  fn next_final(&mut self) -> u64 {
+    let state = self.state;
+    self.state += 1;
+    state
+  }
+  
+  fn disable_final(&mut self) -> &mut SimpleStateGenerator {
+    self
+  }
+  
+  fn enable_final(&mut self) -> &mut SimpleStateGenerator {
+    self
+  }
+}
+```
+
+#### Associated Types
+
+##### `type State`
+
+The associated state that is returned when generating states.
+
+#### Required Methods
+
+##### `fn next_initial(&mut self) -> Self::State`
+
+Generate a new initial state.
+
+##### `fn next_final(&mut self) -> Self::State`
+
+Generate a new final state.
+
+##### `fn disable_final(&mut self) -> &mut Self`
+
+Temporarily disable final state generation. This is useful for nesting state generation where final states should only exist on the top-most level.
+
+##### `fn enable_final(&mut self) -> &mut Self`
+
+Re-enable final state generation.
 
 ## Macros
 
