@@ -93,7 +93,7 @@ pub enum Expression {
 }
 ```
 
-A representation of regular expression as an immutable recursive data type.
+A representation of a regular expression as an immutable recursive data type.
 
 #### Examples
 
