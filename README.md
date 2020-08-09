@@ -363,4 +363,4 @@ macro_rules! all {
 }
 ```
 
-Construct an `Interval::<u32>::all(...)`.
+Construct an `Interval::<u32>::all(...)`. This is equivalent to the `.` operator in standard regular expressions.
