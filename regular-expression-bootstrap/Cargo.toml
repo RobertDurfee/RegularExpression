@@ -3,16 +3,16 @@ name = "regular-expression-bootstrap"
 version = "0.1.0"
 authors = ["Robert Durfee <rbd@mit.edu>"]
 description = "A library for compiling and executing regular expressions."
-license-file = "LICENSE"
-repository = "https://github.com/RobertDurfee/RegularExpression"
+license = "MIT"
+repository = "https://github.com/RobertDurfee/RegularExpression/tree/v0.1.0"
 readme = "README.md"
 keywords = ["regular-expression", "regex", "regexp", "re"]
 categories = ["parsing"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+documentation = "https://docs.rs/regular-expression-bootstrap/0.1.0/regular_expression_bootstrap/"
+homepage = "https://github.com/RobertDurfee/RegularExpression/tree/v0.1.0"
 
 [dependencies]
-num = "0.3"
-segment-map = "0.1.0"
-finite-automata = "0.1.1"
+num-traits = "0.2.12"
+segment-map = { path = "../../SegmentMap", version = "0.1.0" }
+finite-automata = { path = "../../FiniteAutomata", version = "0.1.1" }

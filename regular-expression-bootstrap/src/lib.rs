@@ -1,5 +1,5 @@
 use std::ops::AddAssign;
-use num::{
+use num_traits::{
     Bounded,
     One,
 };
